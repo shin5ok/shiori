@@ -19,6 +19,7 @@ import (
 	"golang.org/x/oauth2"
 	"my-bookmark/internal/content"
 	"my-bookmark/internal/iap"
+	"my-bookmark/internal/infographic"
 	"my-bookmark/internal/store"
 	"my-bookmark/internal/summary"
 	"my-bookmark/internal/web"
@@ -39,6 +40,8 @@ type Database interface {
 	Claim(context.Context, string, string) (string, error)
 	Finish(context.Context, string, string, string, []string, string, bool) error
 	Enqueue(context.Context, string, string, summary.Style, string) (string, error)
+	EnqueueInfographic(context.Context, string, string) error
+	GetInfographicImage(context.Context, string, string) (infographic.Image, error)
 	Session(context.Context, string) (store.Session, error)
 	PutSession(context.Context, string, store.Session) error
 	DeleteSession(context.Context, string) error
@@ -120,6 +123,8 @@ func (a *App) Handler() http.Handler {
 		r.With(a.requireSession).Get("/settings/api", a.tokenSettings)
 		r.Get("/articles/{id}", a.detail)
 		r.Get("/articles/{id}/summary", a.summaryStatus)
+		r.Get("/articles/{id}/infographic.svg", a.infographicImage)
+		r.Get("/articles/{id}/infographic/image", a.infographicImage)
 		r.Get("/auth/google", a.login)
 		r.Get("/auth/google/callback", a.callback)
 		r.Group(func(r chi.Router) {
@@ -131,6 +136,7 @@ func (a *App) Handler() http.Handler {
 			r.Post("/bookmarks/{id}/understood", a.setUnderstood)
 			r.Post("/bookmarks/{id}/rating", a.setRating)
 			r.Post("/articles/{id}/summary", a.generate)
+			r.Post("/articles/{id}/infographic", a.generateInfographic)
 			r.Post("/logout", a.logout)
 		})
 	})

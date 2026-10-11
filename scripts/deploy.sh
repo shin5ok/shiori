@@ -2,6 +2,9 @@
 source "$(dirname "$0")/common.sh"
 GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-flash}
 GEMINI_LOCATION=${GEMINI_LOCATION:-global}
+GEMINI_IMAGE_MODEL=${GEMINI_IMAGE_MODEL:-gemini-3-pro-image}
+GEMINI_IMAGE_LOCATION=${GEMINI_IMAGE_LOCATION:-global}
+image_env="GEMINI_IMAGE_MODEL=$GEMINI_IMAGE_MODEL,GEMINI_IMAGE_LOCATION=$GEMINI_IMAGE_LOCATION"
 project_number=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
 service_url="https://${SERVICE}-${project_number}.${REGION}.run.app"
 base_url=${DEPLOY_BASE_URL:-$service_url}
@@ -33,7 +36,7 @@ gcloud run deploy "$worker_service" --image="$image" --project="$PROJECT_ID" --r
   --service-account="$RUNTIME_SA" \
   --no-allow-unauthenticated --no-iap --port=8080 --cpu=1 --memory=2Gi --concurrency=1 --timeout=660 --cpu-throttling \
   --min=0 --max=3 \
-  --set-env-vars="APP_ENV=production,WORKER_ONLY=true,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,BASE_URL=$worker_url,GEMINI_MODEL=$GEMINI_MODEL,GEMINI_LOCATION=$GEMINI_LOCATION,$tasks_env" \
+  --set-env-vars="APP_ENV=production,WORKER_ONLY=true,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,BASE_URL=$worker_url,GEMINI_MODEL=$GEMINI_MODEL,GEMINI_LOCATION=$GEMINI_LOCATION,$image_env,$tasks_env" \
   --clear-secrets --quiet
 gcloud run services add-iam-policy-binding "$worker_service" --project="$PROJECT_ID" --region="$REGION" \
   --member="serviceAccount:$TASKS_SA" --role=roles/run.invoker --quiet >/dev/null
@@ -41,7 +44,7 @@ gcloud run deploy "$SERVICE" --image="$image" --project="$PROJECT_ID" --region="
   --service-account="$RUNTIME_SA" \
   --no-allow-unauthenticated --iap --port=8080 --cpu=1 --memory=2Gi --concurrency=40 --timeout=300 --no-cpu-throttling \
   --min=1 --max=3 \
-  --set-env-vars="APP_ENV=production,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,BASE_URL=$base_url,API_BASE_URL=$api_url,IAP_AUDIENCE=/projects/$project_number/locations/$REGION/services/$SERVICE,GEMINI_MODEL=$GEMINI_MODEL,GEMINI_LOCATION=$GEMINI_LOCATION,$tasks_env" \
+  --set-env-vars="APP_ENV=production,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,BASE_URL=$base_url,API_BASE_URL=$api_url,IAP_AUDIENCE=/projects/$project_number/locations/$REGION/services/$SERVICE,GEMINI_MODEL=$GEMINI_MODEL,GEMINI_LOCATION=$GEMINI_LOCATION,$image_env,$tasks_env" \
   --clear-secrets --quiet
 gcloud run services add-iam-policy-binding "$SERVICE" --project="$PROJECT_ID" --region="$REGION" \
   --member="serviceAccount:service-${project_number}@gcp-sa-iap.iam.gserviceaccount.com" \

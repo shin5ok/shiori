@@ -2,6 +2,7 @@
   'use strict';
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
   const active = new Set();
+  const visualActive = new Set();
   const toast = message => {
     const el = document.querySelector('.toast');
     el.textContent = message;
@@ -73,6 +74,66 @@
       button.hidden = hasPoints;
       button.disabled = busy;
       button.textContent = busy ? '要約を作成中…' : data.status === 'pending' ? '要約を作成する' : '要約を再試行する';
+    }
+    updateInfographic(el, data, hasPoints);
+  }
+  function updateInfographic(el, data, hasPoints) {
+    const panel = el.querySelector('.infographic-panel');
+    if (!panel) return;
+    panel.hidden = !hasPoints;
+    const previous = panel.dataset.infographicStatus;
+    const status = data.infographic_status || '';
+    panel.dataset.infographicStatus = status;
+    const button = panel.querySelector('.infographic-button');
+    const figure = panel.querySelector('.infographic-figure');
+    const message = panel.querySelector('.infographic-message');
+    const busy = status === 'queued' || status === 'processing';
+    if (button) {
+      button.hidden = false;
+      button.disabled = busy || data.status !== 'ready';
+      button.textContent = busy ? '図解を作成中…' : status === 'ready' ? '絵を作り直す' : status === 'failed' || status === 'interrupted' ? '図解を再試行する' : '絵で説明する';
+    }
+    figure.hidden = status !== 'ready';
+    if (status === 'ready' && previous !== 'ready') {
+      const imageURL = `/articles/${el.dataset.article}/infographic/image?t=${Date.now()}`;
+      figure.querySelector('img').src = imageURL;
+      figure.querySelector('a').href = imageURL;
+    }
+    message.hidden = !busy && status !== 'failed' && status !== 'interrupted';
+    message.textContent = busy ? '図解を作成しています。ページを離れても続きます。' : status === 'failed' ? (data.infographic_error || '図解を作成できませんでした。再試行できます。') : status === 'interrupted' ? '処理が中断されました。再試行できます。' : '';
+  }
+  async function pollInfographic(id) {
+    for (let i = 0; article(id) && ['queued', 'processing'].includes(article(id).querySelector('.infographic-panel')?.dataset.infographicStatus); i++) {
+      await new Promise(resolve => setTimeout(resolve, i < 20 ? 3000 : 15000));
+      try {
+        const response = await fetch(`/articles/${id}/summary`);
+        if ([401, 403, 404].includes(response.status)) return;
+        if (!response.ok) continue;
+        const data = await response.json(); update(id, data);
+        if (!['queued', 'processing'].includes(data.infographic_status)) return;
+      } catch { /* Retry temporary network failures while this page is open. */ }
+    }
+  }
+  async function generateInfographic(id) {
+    if (!csrf || !/^[a-f0-9]{64}$/.test(id) || visualActive.has(id)) return;
+    visualActive.add(id);
+    const button = article(id)?.querySelector('.infographic-button');
+    if (button) button.disabled = true;
+    try {
+      const response = await fetch(`/articles/${id}/infographic`, {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ csrf }),
+      });
+      if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('通信に失敗しました。時間をおいて再試行してください。');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || '図解を作成できませんでした。');
+      update(id, data);
+      if (['queued', 'processing'].includes(data.infographic_status)) await pollInfographic(id);
+    } catch (error) {
+      toast(error.message);
+      if (button) button.disabled = false;
+    } finally {
+      visualActive.delete(id);
     }
   }
   async function poll(id) {
@@ -245,6 +306,8 @@
   }));
   document.querySelectorAll('.summary-style[data-style]').forEach(button => button.addEventListener('click', () => generate(button.dataset.id, button.dataset.style)));
   document.querySelectorAll('.summary[data-status="queued"], .summary[data-status="processing"]').forEach(el => poll(el.closest('[data-article]').dataset.article));
+  document.querySelectorAll('.infographic-button').forEach(button => button.addEventListener('click', () => generateInfographic(button.dataset.id)));
+  document.querySelectorAll('.infographic-panel[data-infographic-status="queued"], .infographic-panel[data-infographic-status="processing"]').forEach(el => pollInfographic(el.closest('[data-article]').dataset.article));
   document.querySelectorAll('.delete-form').forEach(form => form.addEventListener('submit', event => {
     if (!window.confirm('このブックマークを削除しますか？')) event.preventDefault();
   }));

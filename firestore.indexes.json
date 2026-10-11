@@ -83,6 +83,14 @@
       ]
     },
     {
+      "collectionGroup": "infographic_jobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "queued_at", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "articles",
       "queryScope": "COLLECTION",
       "fields": [
@@ -102,6 +110,11 @@
     }
   ],
   "fieldOverrides": [
+    {
+      "collectionGroup": "infographic_images",
+      "fieldPath": "image",
+      "indexes": []
+    },
     {
       "collectionGroup": "sessions",
       "fieldPath": "expires_at",

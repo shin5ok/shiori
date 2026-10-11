@@ -54,12 +54,14 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	var summarizer app.Summarizer = &content.Gemini{Project: cfg.Project, Location: cfg.GeminiLocation, Model: cfg.GeminiModel, TokenSource: tokenSource}
+	gemini := &content.Gemini{Project: cfg.Project, Location: cfg.GeminiLocation, Model: cfg.GeminiModel, ImageModel: cfg.GeminiImageModel, ImageLocation: cfg.GeminiImageLocation, TokenSource: tokenSource}
+	var summarizer app.Summarizer = gemini
 	database := store.New(db)
 	worker := app.NewWorker(database, summarizer, cfg.GeminiModel)
+	visualWorker := app.NewInfographicWorker(database, gemini)
 	var handler http.Handler
 	if cfg.WorkerOnly {
-		handler = app.TaskHandler(database, worker)
+		handler = app.TaskHandler(database, worker, visualWorker)
 	} else {
 		application, err := app.New(cfg, database, summarizer)
 		if err != nil {
@@ -75,9 +77,15 @@ func run() error {
 		}
 		if cfg.TasksQueue != "" {
 			publisher := &app.CloudTasks{Queue: cfg.TasksQueue, WorkerURL: cfg.TasksWorkerURL, ServiceAccount: cfg.TasksServiceAccount, TokenSource: tokenSource}
+			visualDone := make(chan struct{})
+			go func() { defer close(visualDone); app.RunInfographicDispatcher(ctx, database, publisher) }()
 			app.RunDispatcher(ctx, database, publisher)
+			<-visualDone
 		} else {
+			visualDone := make(chan struct{})
+			go func() { defer close(visualDone); visualWorker.Run(ctx) }()
 			worker.Run(ctx)
+			<-visualDone
 		}
 	}()
 	writeTimeout := 100 * time.Second

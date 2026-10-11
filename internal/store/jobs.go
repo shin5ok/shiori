@@ -352,6 +352,20 @@ func (s *Store) FinishJob(ctx context.Context, id, lease, title string, points [
 		if a.Lease != lease || j.Lease != lease || j.Status != "running" {
 			return ErrBusy
 		}
+		var infographicRef *firestore.DocumentRef
+		var infographicJob InfographicJob
+		if failure == "" {
+			infographicRef = s.infographicJob(id)
+			visualDoc, visualErr := tx.Get(infographicRef)
+			if visualErr != nil && !missing(visualErr) {
+				return visualErr
+			}
+			if visualErr == nil {
+				if err := visualDoc.DataTo(&infographicJob); err != nil {
+					return err
+				}
+			}
+		}
 		a.Lease = ""
 		a.LeaseUntil = time.Time{}
 		j.Lease = ""
@@ -374,6 +388,15 @@ func (s *Store) FinishJob(ctx context.Context, id, lease, title string, points [
 			a.Points = points
 			a.TLDR = tldr
 			a.Model = model
+			a.SummaryVersion++
+			a.Infographic = nil
+			a.InfographicImageKey = ""
+			if err := tx.Delete(s.infographicImage(id)); err != nil {
+				return err
+			}
+			a.InfographicStatus = ""
+			a.InfographicError = ""
+			a.InfographicLeaseUntil = time.Time{}
 		} else {
 			a.Status = "failed"
 			a.Stage = "failed"
@@ -382,6 +405,13 @@ func (s *Store) FinishJob(ctx context.Context, id, lease, title string, points [
 		}
 		if err = tx.Set(ar, a); err != nil {
 			return err
+		}
+		if infographicRef != nil && (infographicJob.Status == "queued" || infographicJob.Status == "dispatched" || infographicJob.Status == "running") {
+			infographicJob.Status = "cancelled"
+			infographicJob.Lease, infographicJob.LeaseUntil = "", time.Time{}
+			if err := tx.Set(infographicRef, infographicJob); err != nil {
+				return err
+			}
 		}
 		return tx.Set(jr, j)
 	})

@@ -23,7 +23,7 @@ func summaryData(a store.Article) map[string]any {
 		status = "interrupted"
 	}
 	retryable := status == "ready" || status == "pending" || status == "failed" || status == "interrupted"
-	return map[string]any{"status": status, "stage": a.Stage, "progress": a.Progress, "error": a.LastError, "sources": a.Sources, "points": a.Points, "tldr": a.TLDR, "title": a.Title, "retryable": retryable}
+	return map[string]any{"status": status, "stage": a.Stage, "progress": a.Progress, "error": a.LastError, "sources": a.Sources, "points": a.Points, "tldr": a.TLDR, "title": a.Title, "retryable": retryable, "infographic_status": infographicStatus(a), "infographic_error": a.InfographicError}
 }
 func (a *App) summaryStatus(w http.ResponseWriter, r *http.Request) {
 	id, ok := a.id(w, r)

@@ -8,36 +8,54 @@ import (
 	"errors"
 	"time"
 
+	"my-bookmark/internal/infographic"
 	"my-bookmark/internal/summary"
 )
 
 var ErrNotFound = errors.New("not found")
 var ErrBusy = errors.New("summary already processing or available")
 var ErrRateLimited = errors.New("summary quota exceeded")
+var ErrNotReady = errors.New("summary is not ready for an infographic")
 
 type User struct {
 	ID   string `firestore:"id"`
 	Name string `firestore:"name"`
 }
 type Article struct {
-	ID          string    `firestore:"-"`
-	URL         string    `firestore:"url"`
-	Title       string    `firestore:"title"`
-	Domain      string    `firestore:"domain"`
-	TLDR        []string  `firestore:"tldr"`
-	Points      []string  `firestore:"points"`
-	Status      string    `firestore:"status"`
-	Model       string    `firestore:"model"`
-	RatingTotal int64     `firestore:"rating_total"`
-	Count       int64     `firestore:"count"`
-	Active      bool      `firestore:"active"`
-	CreatedAt   time.Time `firestore:"created_at"`
-	LeaseUntil  time.Time `firestore:"lease_until"`
-	Lease       string    `firestore:"lease"`
-	Stage       string    `firestore:"stage"`
-	Progress    string    `firestore:"progress"`
-	LastError   string    `firestore:"last_error"`
-	Sources     []string  `firestore:"sources"`
+	ID                    string            `firestore:"-"`
+	URL                   string            `firestore:"url"`
+	Title                 string            `firestore:"title"`
+	Domain                string            `firestore:"domain"`
+	TLDR                  []string          `firestore:"tldr"`
+	Points                []string          `firestore:"points"`
+	Status                string            `firestore:"status"`
+	Model                 string            `firestore:"model"`
+	RatingTotal           int64             `firestore:"rating_total"`
+	Count                 int64             `firestore:"count"`
+	Active                bool              `firestore:"active"`
+	CreatedAt             time.Time         `firestore:"created_at"`
+	LeaseUntil            time.Time         `firestore:"lease_until"`
+	Lease                 string            `firestore:"lease"`
+	Stage                 string            `firestore:"stage"`
+	Progress              string            `firestore:"progress"`
+	LastError             string            `firestore:"last_error"`
+	Sources               []string          `firestore:"sources"`
+	SummaryVersion        int64             `firestore:"summary_version"`
+	Infographic           *infographic.Plan `firestore:"infographic"`
+	InfographicImageKey   string            `firestore:"infographic_image_key"`
+	InfographicStatus     string            `firestore:"infographic_status"`
+	InfographicError      string            `firestore:"infographic_error"`
+	InfographicLeaseUntil time.Time         `firestore:"infographic_lease_until"`
+}
+type InfographicJob struct {
+	ArticleID      string    `firestore:"article_id"`
+	UserID         string    `firestore:"user_id"`
+	SummaryVersion int64     `firestore:"summary_version"`
+	Status         string    `firestore:"status"`
+	QueuedAt       time.Time `firestore:"queued_at"`
+	Lease          string    `firestore:"lease"`
+	LeaseUntil     time.Time `firestore:"lease_until"`
+	Attempts       int       `firestore:"attempts"`
 }
 type SummaryJob struct {
 	Instruction string        `firestore:"instruction"`

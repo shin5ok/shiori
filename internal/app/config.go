@@ -19,12 +19,15 @@ type Config struct {
 	Project, Port, BaseURL, Env                     string
 	GoogleClientID, GoogleClientSecret              string
 	GeminiModel, GeminiLocation                     string
+	GeminiImageModel, GeminiImageLocation           string
 	IAPAudience                                     string
 	IAPAllowlist                                    iap.Allowlist
 }
 
 func LoadConfig() (Config, error) {
 	c := Config{Project: os.Getenv("GOOGLE_CLOUD_PROJECT"), Port: env("PORT", "8080"), BaseURL: env("BASE_URL", "http://localhost:8080"), Env: env("APP_ENV", "production"), GoogleClientID: os.Getenv("GOOGLE_CLIENT_ID"), GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"), GeminiModel: env("GEMINI_MODEL", "gemini-3.8-flash"), GeminiLocation: env("GEMINI_LOCATION", "global"), IAPAudience: os.Getenv("IAP_AUDIENCE")}
+	c.GeminiImageModel = env("GEMINI_IMAGE_MODEL", "gemini-3-pro-image")
+	c.GeminiImageLocation = env("GEMINI_IMAGE_LOCATION", "global")
 	if value := os.Getenv("API_ONLY"); value != "" && value != "true" && value != "false" {
 		return c, errors.New("API_ONLY must be true or false")
 	}

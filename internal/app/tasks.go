@@ -25,6 +25,11 @@ type TaskPublisher interface {
 	Publish(context.Context, store.SummaryJob) error
 }
 
+type InfographicTaskStore interface {
+	ClaimInfographic(context.Context, string, time.Time) (*store.InfographicJob, string, error)
+	RetryInfographic(context.Context, string, string) error
+}
+
 // CloudTasks uses the REST API with ADC, as the Gemini client does.
 type CloudTasks struct {
 	Queue, WorkerURL, ServiceAccount string
@@ -34,16 +39,24 @@ type CloudTasks struct {
 }
 
 func (c *CloudTasks) Publish(ctx context.Context, job store.SummaryJob) error {
-	body, err := json.Marshal(TaskRequest{ArticleID: job.ArticleID, QueuedAt: job.QueuedAt})
+	return c.publish(ctx, job.ArticleID, job.QueuedAt, "summary")
+}
+
+func (c *CloudTasks) PublishInfographic(ctx context.Context, job store.InfographicJob) error {
+	return c.publish(ctx, job.ArticleID, job.QueuedAt, "infographic")
+}
+
+func (c *CloudTasks) publish(ctx context.Context, id string, queuedAt time.Time, kind string) error {
+	body, err := json.Marshal(TaskRequest{ArticleID: id, QueuedAt: queuedAt})
 	if err != nil {
 		return err
 	}
 	// Stable across dispatcher crashes; distinct for every user-requested generation.
-	name := c.Queue + "/tasks/" + store.Hash(job.ArticleID+":"+job.QueuedAt.UTC().Format(time.RFC3339Nano))
+	name := c.Queue + "/tasks/" + store.Hash(kind+":"+id+":"+queuedAt.UTC().Format(time.RFC3339Nano))
 	payload, err := json.Marshal(map[string]any{"task": map[string]any{
 		"name": name, "dispatchDeadline": "600s",
 		"httpRequest": map[string]any{
-			"httpMethod": "POST", "url": c.WorkerURL + "/tasks/summary",
+			"httpMethod": "POST", "url": c.WorkerURL + "/tasks/" + kind,
 			"headers":   map[string]string{"Content-Type": "application/json"},
 			"body":      base64.StdEncoding.EncodeToString(body),
 			"oidcToken": map[string]string{"serviceAccountEmail": c.ServiceAccount, "audience": c.WorkerURL},
@@ -83,6 +96,40 @@ func (c *CloudTasks) Publish(ctx context.Context, job store.SummaryJob) error {
 		return nil
 	}
 	return fmt.Errorf("Cloud Tasks returned HTTP %d", res.StatusCode)
+}
+
+type InfographicDispatchStore interface {
+	QueuedInfographics(context.Context) ([]store.InfographicJob, error)
+	MarkInfographicDispatched(context.Context, string, time.Time) error
+}
+
+func DispatchInfographics(ctx context.Context, db InfographicDispatchStore, publisher *CloudTasks) error {
+	jobs, err := db.QueuedInfographics(ctx)
+	if err != nil {
+		return err
+	}
+	var failures []error
+	for _, job := range jobs {
+		if err := publisher.PublishInfographic(ctx, job); err != nil {
+			failures = append(failures, err)
+			continue
+		}
+		if err := db.MarkInfographicDispatched(ctx, job.ArticleID, job.QueuedAt); err != nil {
+			failures = append(failures, err)
+		}
+	}
+	return errors.Join(failures...)
+}
+
+func RunInfographicDispatcher(ctx context.Context, db InfographicDispatchStore, publisher *CloudTasks) {
+	for ctx.Err() == nil {
+		if err := DispatchInfographics(ctx, db, publisher); err != nil {
+			slog.Error("infographic task dispatch failed", "error", err)
+		}
+		if !wait(ctx, 2*time.Second) {
+			return
+		}
+	}
 }
 
 type DispatchStore interface {
@@ -128,7 +175,7 @@ type TaskStore interface {
 // TaskHandler runs only in a dedicated, IAM-authenticated Cloud Run service.
 // Cloud Run validates the Cloud Tasks OIDC token before forwarding requests.
 // Neither the IAP UI service nor the public token API registers these routes.
-func TaskHandler(db TaskStore, worker *Worker) http.Handler {
+func TaskHandler(db TaskStore, worker *Worker, visualWorkers ...*InfographicWorker) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) })
 	mux.HandleFunc("POST /tasks/summary", func(w http.ResponseWriter, r *http.Request) {
@@ -166,5 +213,36 @@ func TaskHandler(db TaskStore, worker *Worker) http.Handler {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	if visualDB, ok := db.(InfographicTaskStore); ok && len(visualWorkers) > 0 {
+		mux.HandleFunc("POST /tasks/infographic", func(w http.ResponseWriter, r *http.Request) {
+			var input TaskRequest
+			decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+			decoder.DisallowUnknownFields()
+			if err := decoder.Decode(&input); err != nil || !validID.MatchString(input.ArticleID) || input.QueuedAt.IsZero() || decoder.Decode(new(any)) != io.EOF {
+				http.Error(w, "invalid task", http.StatusBadRequest)
+				return
+			}
+			job, lease, err := visualDB.ClaimInfographic(r.Context(), input.ArticleID, input.QueuedAt)
+			if err != nil {
+				http.Error(w, "job claim unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			if job == nil {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			err = visualWorkers[0].process(r.Context(), job.ArticleID, lease, job.Attempts < 3)
+			if err != nil && !errors.Is(err, store.ErrBusy) {
+				ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 3*time.Second)
+				defer cancel()
+				if retryErr := visualDB.RetryInfographic(ctx, job.ArticleID, lease); retryErr != nil && !errors.Is(retryErr, store.ErrBusy) {
+					slog.Error("infographic lease release failed", "article", job.ArticleID, "error", retryErr)
+				}
+				http.Error(w, "infographic temporarily unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
+	}
 	return mux
 }

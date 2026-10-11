@@ -31,3 +31,7 @@ create_index articles active rating_total
 create_index bookmarks user_id created_at
 create_index bookmarks article_id created_at
 create_index summary_jobs status queued_at ascending
+create_index infographic_jobs status queued_at ascending
+# Binary image data is read by document ID and must not be indexed.
+gcloud firestore indexes fields update image --collection-group=infographic_images \
+  --disable-indexes --project="$PROJECT_ID" --quiet

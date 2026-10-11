@@ -73,3 +73,5 @@
 }
 
 .summary-custom{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.summary-custom .summary-instruction{width:20ch;max-width:100%;min-height:36px;margin:0;padding:5px 9px;border-radius:7px}.summary-custom .summary-custom-error{flex-basis:100%;color:var(--danger);font-size:12px}
+
+.infographic-panel{margin:12px 0 16px}.infographic-button{min-height:44px;padding:8px 14px;border:1px solid #b8d1ef;border-radius:8px;background:#eaf2fd;color:var(--blue);font-size:13px;font-weight:700}.infographic-button:hover:not(:disabled){background:#dceaff}.infographic-button:disabled{cursor:wait;opacity:.7}.infographic-message{margin:8px 0;color:var(--muted);font-size:12px}.infographic-figure{margin:14px 0 0;max-width:680px}.infographic-figure img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:#f7f9fc}.infographic-figure figcaption{margin-top:6px;color:var(--muted);font-size:11px}

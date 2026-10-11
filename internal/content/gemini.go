@@ -19,10 +19,11 @@ import (
 )
 
 type Gemini struct {
-	Project, Location, Model string
-	TokenSource              oauth2.TokenSource
-	Client                   *http.Client
-	Endpoint                 string
+	Project, Location, Model  string
+	ImageModel, ImageLocation string
+	TokenSource               oauth2.TokenSource
+	Client                    *http.Client
+	Endpoint                  string
 }
 
 func (g *Gemini) Summarize(ctx context.Context, title, body string, style summary.Style, instruction string) (summary.Result, error) {
