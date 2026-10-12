@@ -15,6 +15,13 @@
   function update(id, data) {
     const el = article(id);
     if (!el) return;
+    if (Array.isArray(data.bookmark_tags)) {
+      const tagList = el.querySelector('.tags');
+      if (tagList) {
+        tagList.replaceChildren(...data.bookmark_tags.map(tag => { const span = document.createElement('span'); span.textContent = `#${tag}`; return span; }));
+        tagList.hidden = data.bookmark_tags.length === 0;
+      }
+    }
     const box = el.querySelector('.summary-content');
     const summary = el.querySelector('.summary');
     el.querySelector('.source-list')?.remove();

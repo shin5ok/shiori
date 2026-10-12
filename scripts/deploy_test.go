@@ -24,7 +24,7 @@ func TestDeployBuildsImageBeforeDeploying(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(root, "allow_accounts.yaml"), []byte("domains: [data-cloud.jp]\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "config.yaml"), []byte("domains: [data-cloud.jp]\ntags: [技術, AI]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "bin", "go"), []byte("#!/usr/bin/env bash\nif [[ \"$3\" == --validate ]]; then exit 0; fi\nprintf '{\"bindings\":[{\"role\":\"roles/iap.httpsResourceAccessor\",\"members\":[\"domain:data-cloud.jp\"]}]}' > \"$5\"\n"), 0o755); err != nil {
@@ -103,7 +103,7 @@ func TestDeployCreatesMissingImageRepositoryBeforeBuild(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(root, "allow_accounts.yaml"), []byte("domains: [data-cloud.jp]\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "config.yaml"), []byte("domains: [data-cloud.jp]\ntags: [技術, AI]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "bin", "go"), []byte("#!/usr/bin/env bash\nif [[ \"$3\" == --validate ]]; then exit 0; fi\nprintf '{\"bindings\":[{\"role\":\"roles/iap.httpsResourceAccessor\",\"members\":[\"domain:data-cloud.jp\"]}]}' > \"$5\"\n"), 0o755); err != nil {

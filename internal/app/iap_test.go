@@ -19,23 +19,23 @@ func (v iapTestVerifier) Verify(context.Context, string) (iap.Identity, error) {
 }
 
 func TestLoadConfigRequiresValidAllowAccountsFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "allow_accounts.yaml")
+	path := filepath.Join(t.TempDir(), "config.yaml")
 	t.Setenv("APP_ENV", "production")
 	t.Setenv("GOOGLE_CLOUD_PROJECT", "test-project")
 	t.Setenv("BASE_URL", "https://bookmark.example")
 	t.Setenv("IAP_AUDIENCE", "/projects/123/locations/asia-northeast1/services/shiori")
-	t.Setenv("ALLOW_ACCOUNTS_FILE", path)
+	t.Setenv("CONFIG_FILE", path)
 	t.Setenv("FIRESTORE_EMULATOR_HOST", "")
 	t.Setenv("GOOGLE_CLIENT_ID", "")
 	t.Setenv("GOOGLE_CLIENT_SECRET", "")
 	if _, err := LoadConfig(); err == nil {
 		t.Fatal("missing allowlist accepted")
 	}
-	if err := os.WriteFile(path, []byte("domains: [data-cloud.jp]\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("domains: [data-cloud.jp]\ntags: [技術, AI]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := LoadConfig()
-	if err != nil || !cfg.IAPAllowlist.Allows("reader@data-cloud.jp") {
+	if err != nil || !cfg.IAPAllowlist.Allows("reader@data-cloud.jp") || len(cfg.TagCandidates) != 2 || cfg.TagCandidates[1] != "AI" {
 		t.Fatalf("allowlist not loaded: %v", err)
 	}
 }

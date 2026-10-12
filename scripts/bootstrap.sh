@@ -50,4 +50,4 @@ for collection in sessions oauth_states quotas; do
   fi
 done
 bash scripts/indexes.sh
-echo 'Infrastructure prepared. Next: edit allow_accounts.yaml, then make deploy.'
+echo 'Infrastructure prepared. Next: edit config.yaml, then make deploy.'

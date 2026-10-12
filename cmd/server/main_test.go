@@ -54,7 +54,8 @@ func TestServerStopsWhenChromiumCannotStart(t *testing.T) {
 		"API_ONLY": "false", "WORKER_ONLY": "false", "K_SERVICE": "",
 		"TASKS_QUEUE": "", "TASKS_WORKER_URL": "", "TASKS_SERVICE_ACCOUNT": "",
 		"IAP_AUDIENCE": "", "GOOGLE_CLIENT_ID": "", "GOOGLE_CLIENT_SECRET": "", "API_BASE_URL": "",
-		"CHROME_BIN": filepath.Join(t.TempDir(), "missing-chrome"),
+		"CONFIG_FILE": filepath.Join("..", "..", "config.yaml"),
+		"CHROME_BIN":  filepath.Join(t.TempDir(), "missing-chrome"),
 	} {
 		t.Setenv(name, value)
 	}

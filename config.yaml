@@ -1,0 +1,23 @@
+# Google accounts allowed to use the IAP-protected service.
+# Add individual addresses under accounts; domains allow all Workspace users.
+accounts: []
+domains:
+  - data-cloud.jp
+  - 55mp.com
+  - uname.link
+
+# Candidates for automatic bookmark tags (at least two).
+tags:
+  - 技術
+  - AI
+  - エンタメ
+  - グルメ
+  - SRE
+  - クラウド
+  - 旅行
+  - セキュリティ
+  - OSS
+  - 酒
+  - 歴史
+  - 音楽
+  - 漫画

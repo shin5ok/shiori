@@ -332,6 +332,10 @@ func (s *Store) UpdateStage(ctx context.Context, id, lease, stage, progress stri
 	})
 }
 func (s *Store) FinishJob(ctx context.Context, id, lease, title string, points []string, model string, sources []string, failure string, tldr []string) error {
+	return s.FinishJobWithTags(ctx, id, lease, title, points, model, sources, failure, tldr, nil)
+}
+
+func (s *Store) FinishJobWithTags(ctx context.Context, id, lease, title string, points []string, model string, sources []string, failure string, tldr, tags []string) error {
 	return s.client.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		ar := s.article(id)
 		ad, err := tx.Get(ar)
@@ -367,6 +371,23 @@ func (s *Store) FinishJob(ctx context.Context, id, lease, title string, points [
 					return err
 				}
 			}
+		}
+		var tagUpdates []*firestore.DocumentRef
+		if failure == "" && summary.ValidAutoTags(tags, s.tagCandidates) {
+			docs, err := tx.Documents(s.client.Collection("bookmarks").Where("article_id", "==", id)).GetAll()
+			if err != nil {
+				return err
+			}
+			for _, d := range docs {
+				var b Bookmark
+				if err := d.DataTo(&b); err != nil {
+					return err
+				}
+				if len(b.Tags) == 0 {
+					tagUpdates = append(tagUpdates, d.Ref)
+				}
+			}
+			a.SuggestedTags = append([]string(nil), tags...)
 		}
 		a.Lease = ""
 		a.LeaseUntil = time.Time{}
@@ -413,6 +434,11 @@ func (s *Store) FinishJob(ctx context.Context, id, lease, title string, points [
 			infographicJob.Status = "cancelled"
 			infographicJob.Lease, infographicJob.LeaseUntil = "", time.Time{}
 			if err := tx.Set(infographicRef, infographicJob); err != nil {
+				return err
+			}
+		}
+		for _, ref := range tagUpdates {
+			if err := tx.Update(ref, []firestore.Update{{Path: "tags", Value: tags}, {Path: "updated_at", Value: time.Now().UTC()}}); err != nil {
 				return err
 			}
 		}

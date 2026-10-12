@@ -23,7 +23,7 @@ type Allowlist struct {
 
 func ParseAllowlist(data []byte) (Allowlist, error) {
 	if len(data) > 64*1024 {
-		return Allowlist{}, errors.New("allow_accounts.yaml is too large")
+		return Allowlist{}, errors.New("config.yaml is too large")
 	}
 	var raw struct {
 		Accounts []string `yaml:"accounts"`
@@ -32,21 +32,26 @@ func ParseAllowlist(data []byte) (Allowlist, error) {
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&raw); err != nil {
-		return Allowlist{}, fmt.Errorf("parse allow_accounts.yaml: %w", err)
+		return Allowlist{}, fmt.Errorf("parse config.yaml: %w", err)
 	}
 	var extra any
 	if err := decoder.Decode(&extra); err != io.EOF {
-		return Allowlist{}, errors.New("allow_accounts.yaml must contain one document")
+		return Allowlist{}, errors.New("config.yaml must contain one document")
 	}
+	return NewAllowlist(raw.Accounts, raw.Domains)
+}
+
+// NewAllowlist validates and normalizes the configured account rules.
+func NewAllowlist(accounts, domains []string) (Allowlist, error) {
 	list := Allowlist{accounts: map[string]bool{}, domains: map[string]bool{}}
-	for _, value := range raw.Accounts {
+	for _, value := range accounts {
 		value = strings.ToLower(strings.TrimSpace(value))
 		if !emailPattern.MatchString(value) || list.accounts[value] {
 			return Allowlist{}, fmt.Errorf("invalid or duplicate account %q", value)
 		}
 		list.accounts[value] = true
 	}
-	for _, value := range raw.Domains {
+	for _, value := range domains {
 		value = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(value)), "@")
 		if !domainPattern.MatchString(value) || list.domains[value] {
 			return Allowlist{}, fmt.Errorf("invalid or duplicate domain %q", value)
@@ -54,7 +59,7 @@ func ParseAllowlist(data []byte) (Allowlist, error) {
 		list.domains[value] = true
 	}
 	if len(list.accounts)+len(list.domains) == 0 {
-		return Allowlist{}, errors.New("allow_accounts.yaml must allow at least one account or domain")
+		return Allowlist{}, errors.New("config.yaml must allow at least one account or domain")
 	}
 	return list, nil
 }

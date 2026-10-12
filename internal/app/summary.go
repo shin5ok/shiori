@@ -35,7 +35,13 @@ func (a *App) summaryStatus(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, summaryData(article))
+	data := summaryData(article)
+	if current := session(r); current != nil {
+		if bookmark, err := a.db.Own(r.Context(), current.User.ID, id); err == nil && bookmark != nil {
+			data["bookmark_tags"] = bookmark.Tags
+		}
+	}
+	writeJSON(w, http.StatusOK, data)
 }
 func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 	id, ok := a.id(w, r)

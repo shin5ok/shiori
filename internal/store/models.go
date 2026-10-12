@@ -23,6 +23,7 @@ type User struct {
 	Name string `firestore:"name"`
 }
 type Article struct {
+	SuggestedTags         []string          `firestore:"suggested_tags"`
 	SummaryCost           cost.Estimate     `firestore:"summary_cost"`
 	InfographicCost       cost.Estimate     `firestore:"infographic_cost"`
 	ID                    string            `firestore:"-"`

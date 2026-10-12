@@ -11,8 +11,8 @@ base_url=${DEPLOY_BASE_URL:-$service_url}
 api_service="${SERVICE}-api"
 api_url="https://${api_service}-${project_number}.${REGION}.run.app"
 if [[ "$base_url" != https://* || "$base_url" == *','* || "$base_url" == */ ]]; then echo 'DEPLOY_BASE_URL must be an HTTPS origin without a trailing slash.' >&2; exit 1; fi
-[[ -f allow_accounts.yaml ]] || { echo 'allow_accounts.yaml is required.' >&2; exit 1; }
-go run ./cmd/iap-policy --validate allow_accounts.yaml
+[[ -f config.yaml ]] || { echo 'config.yaml is required.' >&2; exit 1; }
+go run ./cmd/iap-policy --validate config.yaml
 if ! gcloud artifacts repositories describe shiori-images --location="$REGION" --project="$PROJECT_ID" >/dev/null 2>&1; then
   gcloud artifacts repositories create shiori-images --repository-format=docker --location="$REGION" --project="$PROJECT_ID"
 fi
@@ -53,7 +53,7 @@ current_policy=$(mktemp)
 desired_policy=$(mktemp)
 trap 'rm -f "$current_policy" "$desired_policy"' EXIT
 gcloud iap web get-iam-policy --project="$PROJECT_ID" --region="$REGION" --resource-type=cloud-run --service="$SERVICE" --format=json > "$current_policy"
-go run ./cmd/iap-policy allow_accounts.yaml "$current_policy" "$desired_policy"
+go run ./cmd/iap-policy config.yaml "$current_policy" "$desired_policy"
 gcloud iap web set-iam-policy "$desired_policy" --project="$PROJECT_ID" --region="$REGION" --resource-type=cloud-run --service="$SERVICE" --quiet
 printf '\nIAP URL: %s\n' "$base_url"
 

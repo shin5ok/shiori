@@ -9,12 +9,22 @@ import (
 	"cloud.google.com/go/firestore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"my-bookmark/internal/summary"
 )
 
-type Store struct{ client *firestore.Client }
+type Store struct {
+	client        *firestore.Client
+	tagCandidates []string
+}
 
-func New(c *firestore.Client) *Store { return &Store{client: c} }
-func missing(err error) bool         { return status.Code(err) == codes.NotFound }
+func New(c *firestore.Client, candidates ...[]string) *Store {
+	s := &Store{client: c}
+	if len(candidates) > 0 {
+		s.tagCandidates = append([]string(nil), candidates[0]...)
+	}
+	return s
+}
+func missing(err error) bool { return status.Code(err) == codes.NotFound }
 func normalizeError(err error) error {
 	if missing(err) {
 		return ErrNotFound
@@ -94,11 +104,14 @@ func (s *Store) Save(ctx context.Context, u User, raw, comment string, tags []st
 		}
 		b.Comment = comment
 		b.Tags = tags
+		if len(b.Tags) == 0 && summary.ValidAutoTags(a.SuggestedTags, s.tagCandidates) {
+			b.Tags = append([]string(nil), a.SuggestedTags...)
+		}
 		b.UpdatedAt = now
 		b.Name = u.Name
 		a.Active = true
 		ops := []func() error{}
-		if ae != nil {
+		if ae != nil || (len(s.tagCandidates) >= 2 && len(tags) == 0 && !summary.ValidAutoTags(a.SuggestedTags, s.tagCandidates) && a.Status == "ready") {
 			q, qr, err := readQuota(ctx, tx, s.client, u.ID, now)
 			if err != nil {
 				return err

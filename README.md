@@ -5,6 +5,7 @@ Go + chiで作る、IAPで保護されたブックマークサービスです。
 - 新着・星の合計による人気順、マイブックマーク、未理解だけを表示する「まだ」、記事詳細と公開コメント
 - 自分のブックマークを5段階の星で評価・変更・解除
 - URL保存・削除、コメント・タグ編集
+- タグが空なら、要約と同時に内容に合うタグを2〜3個自動で割り当て
 - 本番はCloud Run IAP、ローカル開発はGoogle OAuth / OpenID Connectでログイン
 - Geminiによる記事・重要な画像・YouTube動画の要約、関連ページ補足、進捗表示、手動再試行
 - 要約の重要点やしくみをイラスト付きの1枚絵にする「絵で説明する」
@@ -249,13 +250,17 @@ FIRESTORE_EMULATOR_HOST=127.0.0.1:8085 go test -race ./internal/app \
 
 `.env`の`PROJECT_ID`と`GOOGLE_CLOUD_PROJECT`を、Vertex AIを有効化する実際の同一GCPプロジェクトに設定します。本番の`GOOGLE_CLOUD_PROJECT`はdeployスクリプトが`PROJECT_ID`から設定します。
 
-本番でログインを許可するアカウントをルートの`allow_accounts.yaml`に記入します。`accounts`には個別のメールアドレス、`domains`にはGoogle Workspace / Cloud Identityドメインを書きます。実際の許可対象はこのファイルの内容で決まります。ファイルが空または不正ならデプロイまたはサーバー起動が失敗します。
+ルートの `config.yaml` で、自動タグ候補と許可アカウントをまとめて設定します。`tags` は重複のない2個以上の候補（各24文字まで）、`accounts` は個別のメールアドレス、`domains` はGoogle Workspace / Cloud Identityドメインです。アプリ・ワーカー・デプロイ処理は同じファイルを読みます。ファイルが空または不正ならデプロイまたはサーバー起動が失敗します。変更は再起動・再デプロイ後に反映されます。ローカルで別の配置を使う場合は `CONFIG_FILE` でパスを指定できます。
 
 ```yaml
 accounts:
   - reader@example.com
 domains:
   - data-cloud.jp
+tags:
+  - 技術
+  - AI
+  - OSS
 ```
 
 ```bash
@@ -279,7 +284,7 @@ make apis
 
 `make bootstrap`はAPI（IAPを含む）、Firestore Nativeの`(default)` DB、専用の実行・ビルド・タスク呼び出し用サービスアカウント、TTL、複合インデックスを作成し、実行サービスアカウントへFirestore・Vertex AI・Cloud Tasksの権限を付与します。リージョンの既定値は東京`asia-northeast1`です。既存DBは変更しません。DBのロケーションは作成後に変更できません。
 
-`make deploy`はテスト・静的解析後にイメージを構築し、画面サービスを`--iap --no-allow-unauthenticated`で更新します。IAPサービスエージェントへCloud Run Invokerを付与し、`allow_accounts.yaml`からサービス単位のIAPアクセス権を同期します。既存の同ロールの許可は置き換え、他のロールは保持します。アプリもIAP署名付きJWTを毎回検証し、許可リストと照合します。デプロイ実行者にはCloud Build、Cloud Run、IAPポリシーを更新する権限が必要です。
+`make deploy`はテスト・静的解析後にイメージを構築し、画面サービスを`--iap --no-allow-unauthenticated`で更新します。IAPサービスエージェントへCloud Run Invokerを付与し、`config.yaml`からサービス単位のIAPアクセス権を同期します。既存の同ロールの許可は置き換え、他のロールは保持します。アプリもIAP署名付きJWTを毎回検証し、許可リストと照合します。デプロイ実行者にはCloud Build、Cloud Run、IAPポリシーを更新する権限が必要です。
 
 同じイメージから、役割ごとに3つのCloud Runサービスを作成します。
 
@@ -303,7 +308,7 @@ FirestoreへはサーバーSDKとIAMでアクセスします。ブラウザー�
 
 星による人気順とCloud Tasksを初めて導入する環境では、次の順で更新してください。画像要約だけを追加する更新では、追加のAPI・IAM・Firestoreインデックスやデータ移行は不要です。
 
-1. `.env` の `PROJECT_ID`・`REGION`・`SERVICE` と `allow_accounts.yaml` を確認します。ADCは星の初期化に使います。
+1. `.env` の `PROJECT_ID`・`REGION`・`SERVICE` と `config.yaml` を確認します。ADCは星の初期化に使います。
 
    ```bash
    gcloud auth login
@@ -403,7 +408,8 @@ curl --request POST "${SHIORI_API_URL}?token=${SHIORI_TOKEN}" \
 例：`{"url":"あとで読む: [記事](https://example.com/article)。"}`。
 URLが見つからない場合や2件以上ある場合は400を返します。抽出したURLにも通常の公開URL検証を適用します。
 どちらも正規化したURLをキーに、トークン所有者のブックマークを登録・更新します。
-同じURLの再送で登録件数は増えません。コメント・タグは置き換え、省略した場合は空になります。
+同じURLの再送で登録件数は増えません。コメント・タグは置き換え、コメントを省略した場合は空になります。
+タグを省略した場合や `"tags":[]` の場合は、要約と同時に内容に合うタグを2〜3個生成し、タグが空のブックマークへ非同期で割り当てます。候補は `config.yaml` の `tags` で設定します。初期値は「技術、AI、エンタメ、グルメ、SRE、クラウド、旅行、セキュリティ、OSS、酒、歴史、音楽、漫画」です。生成済みの候補がある記事はすぐに再利用します。過去の要約済み記事で候補がない場合は要約を再生成します（通常の利用上限を適用）。処理中に手動で指定されたタグは上書きしません。
 新しい記事は既存の要約キューに入り、要約は非同期で作成されます（既存の利用上限も適用）。
 GETでは登録できません。CookieではAPI認証できません。
 
@@ -431,7 +437,7 @@ Accept未指定・`*/*` のみの場合はJSONを返し、JSONとHTMLの両方�
 - `${SERVICE}-api`：`API_ONLY=true` のAPI専用サービス。Cloud Runの入口は公開し、アプリで専用トークンを検証します。画面・OAuth・トークン発行ルートは公開しません。保存した記事の要約は専用ワーカーが処理します。
 - `${SERVICE}-worker`：`WORKER_ONLY=true` のIAMで保護された要約サービス。Cloud Tasksからの依頼を処理します。
 
-API側でも `allow_accounts.yaml` のメールアドレス／ドメインを毎リクエスト照合します。
+API側でも `config.yaml` のメールアドレス／ドメインを毎リクエスト照合します。
 許可リストの変更後は `make deploy` で再デプロイしてください。APIのURLは画面サービスの `API_BASE_URL` に自動設定されます。
 追加のサービスが作られるため、デプロイにはCloud Runの公開設定とCloud Loggingのsink更新権限が必要です。
 

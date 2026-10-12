@@ -80,6 +80,7 @@ func (w *Worker) processAttempt(parent context.Context, id, lease string, style 
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return err
 	}
+	var tags []string
 	var points []string
 	var tldr []string
 	title := ""
@@ -106,7 +107,7 @@ func (w *Worker) processAttempt(parent context.Context, id, lease string, style 
 			} else {
 				var result summary.Result
 				result, err = video.SummarizeVideo(ctx, videoURL, style, instruction)
-				points, generatedTitle, tldr = result.Points, result.Title, result.TLDR
+				points, generatedTitle, tldr, tags = result.Points, result.Title, result.TLDR, result.Tags
 				if err != nil {
 					failure = "動画を要約できませんでした。公開状態・視聴制限を確認し、時間をおいて再試行してください。"
 				} else if content.ValidateSummaryWithInstruction(points, instruction) != nil || content.ValidateTLDRWithInstruction(tldr, instruction) != nil {
@@ -133,7 +134,7 @@ func (w *Worker) processAttempt(parent context.Context, id, lease string, style 
 				} else {
 					var result summary.Result
 					result, err = w.summarizeArticle(ctx, title, doc.Text, images, style, instruction)
-					points, generatedTitle, tldr = result.Points, result.Title, result.TLDR
+					points, generatedTitle, tldr, tags = result.Points, result.Title, result.TLDR, result.Tags
 					if err != nil {
 						failure = "要約を作成できませんでした。"
 					}
@@ -192,7 +193,7 @@ func (w *Worker) processAttempt(parent context.Context, id, lease string, style 
 						} else {
 							var result summary.Result
 							result, err = w.summarizeArticle(ctx, title, input, images, style, instruction)
-							points, generatedTitle, tldr = result.Points, result.Title, result.TLDR
+							points, generatedTitle, tldr, tags = result.Points, result.Title, result.TLDR, result.Tags
 							if err != nil {
 								failure = "要約を作成できませんでした。"
 							} else if err = content.ValidateSummaryWithInstruction(points, instruction); err != nil {
@@ -224,7 +225,15 @@ func (w *Worker) processAttempt(parent context.Context, id, lease string, style 
 	}
 	finishCtx, finishCancel := context.WithTimeout(context.WithoutCancel(parent), 3*time.Second)
 	defer finishCancel()
-	if e := w.db.FinishJob(finishCtx, id, lease, title, points, w.model, sources, failure, tldr); e != nil {
+	finish := w.db.FinishJob
+	if tagged, ok := w.db.(interface {
+		FinishJobWithTags(context.Context, string, string, string, []string, string, []string, string, []string, []string) error
+	}); ok {
+		finish = func(ctx context.Context, id, lease, title string, points []string, model string, sources []string, failure string, tldr []string) error {
+			return tagged.FinishJobWithTags(ctx, id, lease, title, points, model, sources, failure, tldr, tags)
+		}
+	}
+	if e := finish(finishCtx, id, lease, title, points, w.model, sources, failure, tldr); e != nil {
 		if !errors.Is(e, store.ErrBusy) {
 			slog.Error("summary result could not be saved", "article", id, "error", e)
 		}

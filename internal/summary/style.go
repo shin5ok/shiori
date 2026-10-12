@@ -6,6 +6,7 @@ import "errors"
 type Style string
 
 type Result struct {
+	Tags   []string
 	TLDR   []string
 	Title  string
 	Points []string

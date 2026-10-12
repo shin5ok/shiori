@@ -8,10 +8,12 @@ import (
 	"regexp"
 	"strings"
 
+	"my-bookmark/internal/configfile"
 	"my-bookmark/internal/iap"
 )
 
 type Config struct {
+	TagCandidates                                   []string
 	APIOnly                                         bool
 	WorkerOnly                                      bool
 	TasksQueue, TasksWorkerURL, TasksServiceAccount string
@@ -41,16 +43,12 @@ func LoadConfig() (Config, error) {
 	c.TasksServiceAccount = os.Getenv("TASKS_SERVICE_ACCOUNT")
 	c.APIBaseURL = strings.TrimRight(os.Getenv("API_BASE_URL"), "/")
 	c.BaseURL = strings.TrimRight(c.BaseURL, "/")
-	if c.IAPAudience != "" || c.APIOnly {
-		data, err := os.ReadFile(env("ALLOW_ACCOUNTS_FILE", "allow_accounts.yaml"))
-		if err != nil {
-			return c, fmt.Errorf("read allow_accounts.yaml: %w", err)
-		}
-		c.IAPAllowlist, err = iap.ParseAllowlist(data)
-		if err != nil {
-			return c, err
-		}
+	settings, err := configfile.Load(env("CONFIG_FILE", "config.yaml"))
+	if err != nil {
+		return c, fmt.Errorf("load config.yaml: %w", err)
 	}
+	c.TagCandidates = settings.Tags
+	c.IAPAllowlist = settings.Allowlist
 	return c, c.Validate()
 }
 
@@ -99,7 +97,7 @@ func (c Config) Validate() error {
 			return errors.New("production cannot use Firestore Emulator")
 		}
 		if !c.WorkerOnly && ((!c.APIOnly && c.IAPAudience == "") || len(c.IAPAllowlist.Members()) == 0) {
-			return errors.New("IAP_AUDIENCE and allow_accounts.yaml are required in production")
+			return errors.New("IAP_AUDIENCE and config.yaml are required in production")
 		}
 	} else {
 		if os.Getenv("K_SERVICE") != "" {
