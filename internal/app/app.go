@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"golang.org/x/oauth2"
 	"my-bookmark/internal/content"
+	"my-bookmark/internal/cost"
 	"my-bookmark/internal/iap"
 	"my-bookmark/internal/infographic"
 	"my-bookmark/internal/store"
@@ -71,7 +72,7 @@ func New(cfg Config, db Database, summary Summarizer) (*App, error) {
 			return raw
 		}
 		return u.Hostname()
-	}, "summaryState": summaryData}
+	}, "costLabel": func(e cost.Estimate) string { return e.Label() }, "costExplanation": func() string { return cost.Explanation }, "summaryState": summaryData}
 	tmpl, err := template.New("pages").Funcs(funcs).ParseFS(web.Files, "templates/*.html")
 	if err != nil {
 		return nil, err

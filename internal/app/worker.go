@@ -75,6 +75,7 @@ func (w *Worker) process(parent context.Context, id, lease string, style summary
 func (w *Worker) processAttempt(parent context.Context, id, lease string, style summary.Style, instruction string, retryTransient bool) error {
 	ctx, cancel := context.WithTimeout(parent, 9*time.Minute)
 	defer cancel()
+	ctx = generationCostContext(ctx, w.db, id, lease, false)
 	article, err := w.db.Get(ctx, id)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return err

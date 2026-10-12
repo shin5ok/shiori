@@ -19,6 +19,8 @@
     const summary = el.querySelector('.summary');
     el.querySelector('.source-list')?.remove();
     summary.dataset.status = data.status;
+    updateCost(el, 'summary', data.summary_cost);
+    updateCost(el, 'infographic', data.infographic_cost);
     const hasPoints = Array.isArray(data.points) && data.points.length > 0;
     const hasTLDR = Array.isArray(data.tldr) && data.tldr.length > 0;
     const disclosure = el.querySelector('.summary-disclosure');
@@ -76,6 +78,10 @@
       button.textContent = busy ? '要約を作成中…' : data.status === 'pending' ? '要約を作成する' : '要約を再試行する';
     }
     updateInfographic(el, data, hasPoints);
+  }
+  function updateCost(el, kind, label) {
+    const node = el.querySelector(`.${kind}-cost`);
+    if (node) { node.textContent = label || ''; node.hidden = !label; }
   }
   function updateInfographic(el, data, hasPoints) {
     const panel = el.querySelector('.infographic-panel');

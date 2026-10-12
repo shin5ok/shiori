@@ -8,6 +8,7 @@ import (
 	"errors"
 	"time"
 
+	"my-bookmark/internal/cost"
 	"my-bookmark/internal/infographic"
 	"my-bookmark/internal/summary"
 )
@@ -22,6 +23,8 @@ type User struct {
 	Name string `firestore:"name"`
 }
 type Article struct {
+	SummaryCost           cost.Estimate     `firestore:"summary_cost"`
+	InfographicCost       cost.Estimate     `firestore:"infographic_cost"`
 	ID                    string            `firestore:"-"`
 	URL                   string            `firestore:"url"`
 	Title                 string            `firestore:"title"`

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/firestore"
+	"my-bookmark/internal/cost"
 	"my-bookmark/internal/infographic"
 )
 
@@ -79,6 +80,7 @@ func (s *Store) EnqueueInfographic(ctx context.Context, uid, id string) error {
 			return ErrRateLimited
 		}
 		j := InfographicJob{ArticleID: id, UserID: uid, SummaryVersion: a.SummaryVersion, Status: "queued", QueuedAt: now}
+		a.InfographicCost = cost.Estimate{}
 		a.InfographicStatus, a.InfographicError = "queued", ""
 		a.InfographicLeaseUntil = time.Time{}
 		if err := tx.Set(ar, a); err != nil {

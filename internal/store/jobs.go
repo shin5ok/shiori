@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"cloud.google.com/go/firestore"
+	"my-bookmark/internal/cost"
 	"my-bookmark/internal/summary"
 )
 
@@ -99,6 +100,7 @@ func (s *Store) Enqueue(ctx context.Context, uid, aid string, style summary.Styl
 		j.LeaseUntil = time.Time{}
 		j.LastError = ""
 		j.Attempts = 0
+		a.SummaryCost = cost.Estimate{}
 		a.Status = "queued"
 		a.Stage = "queued"
 		a.Progress = "再試行を受け付けました"
@@ -389,6 +391,7 @@ func (s *Store) FinishJob(ctx context.Context, id, lease, title string, points [
 			a.TLDR = tldr
 			a.Model = model
 			a.SummaryVersion++
+			a.InfographicCost = cost.Estimate{}
 			a.Infographic = nil
 			a.InfographicImageKey = ""
 			if err := tx.Delete(s.infographicImage(id)); err != nil {

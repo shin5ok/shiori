@@ -8,8 +8,11 @@ Go + chiで作る、IAPで保護されたブックマークサービスです。
 - 本番はCloud Run IAP、ローカル開発はGoogle OAuth / OpenID Connectでログイン
 - Geminiによる記事・重要な画像・YouTube動画の要約、関連ページ補足、進捗表示、手動再試行
 - 要約の重要点やしくみをイラスト付きの1枚絵にする「絵で説明する」
+- 要約・図解の下に、直近の生成に使ったAPI料金の概算を小さく表示（日本円）
 - Cloud Tasksと専用Cloud Runワーカーによる非同期要約
 - Cloud Run + Firestore、Identity-Aware Proxy
+
+要約・図解の推定コストは、API応答の `usageMetadata` と [Google CloudのStandard料金](https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing)（2026-10-11確認）から算出します。1ドル150円の固定換算で、税・サーバー料金・割引は含みません。画像選択・構図設計・確認・修正と自動再試行を合算し、手動の再生成でリセットします。対応モデルは `gemini-3.8-flash` とglobalの `gemini-3-pro-image`。使用量や対応料金が不明なら「算出できません」、記録のない過去の結果は非表示です。
 
 ### 目次
 

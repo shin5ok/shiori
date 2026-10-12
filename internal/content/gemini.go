@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/oauth2"
+	"my-bookmark/internal/cost"
 	"my-bookmark/internal/summary"
 )
 
@@ -150,6 +151,7 @@ func (g *Gemini) generateJSON(ctx context.Context, parts []any, instruction stri
 		return "", &APIError{Status: res.StatusCode}
 	}
 	var result struct {
+		Usage      *cost.Usage `json:"usageMetadata"`
 		Candidates []struct {
 			Content struct {
 				Parts []struct {
@@ -163,6 +165,7 @@ func (g *Gemini) generateJSON(ctx context.Context, parts []any, instruction stri
 	if err := json.NewDecoder(io.LimitReader(res.Body, 1024*1024)).Decode(&result); err != nil {
 		return "", err
 	}
+	cost.Record(ctx, g.Model, g.Location, result.Usage, false)
 	if len(result.Candidates) == 0 || result.Candidates[0].FinishReason != "STOP" {
 		return "", errors.New("Gemini did not complete a summary")
 	}

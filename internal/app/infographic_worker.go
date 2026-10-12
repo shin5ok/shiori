@@ -55,6 +55,7 @@ func (w *InfographicWorker) Run(ctx context.Context) {
 func (w *InfographicWorker) process(parent context.Context, id, lease string, retryTransient bool) error {
 	ctx, cancel := context.WithTimeout(parent, 9*time.Minute)
 	defer cancel()
+	ctx = generationCostContext(ctx, w.db, id, lease, true)
 	article, err := w.db.Get(ctx, id)
 	var picture infographic.Image
 	if err == nil && len(article.Points) > 0 && w.generator != nil {
