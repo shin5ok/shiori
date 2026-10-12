@@ -9,16 +9,17 @@ Go + chiで作る、IAPで保護されたブックマークサービスです。
 - 本番はCloud Run IAP、ローカル開発はGoogle OAuth / OpenID Connectでログイン
 - Geminiによる記事・重要な画像・YouTube動画の要約、関連ページ補足、進捗表示、手動再試行
 - 要約の重要点やしくみをイラスト付きの1枚絵にする「絵で説明する」
-- 要約・図解の下に、直近の生成に使ったAPI料金の概算を小さく表示（日本円）
+- 要約・図解の表示欄に、直近の生成に使ったAPI料金の概算を小さく表示（日本円）
 - Cloud Tasksと専用Cloud Runワーカーによる非同期要約
 - Cloud Run + Firestore、Identity-Aware Proxy
-
-要約・図解の推定コストは、API応答の `usageMetadata` と [Google CloudのStandard料金](https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing)（2026-10-11確認）から算出します。1ドル150円の固定換算で、税・サーバー料金・割引は含みません。画像選択・構図設計・確認・修正と自動再試行を合算し、手動の再生成でリセットします。対応モデルは `gemini-3.8-flash` とglobalの `gemini-3-pro-image`。使用量や対応料金が不明なら「算出できません」、記録のない過去の結果は非表示です。
 
 ### 目次
 
 - [使い方：メニュー・理解状態・星評価](#使い方)
+- [タグの自動割り当て](#タグの自動割り当て)
 - [記事・画像・YouTubeの要約](#記事画像youtubeの要約)
+- [推定コストの表示](#推定コストの表示)
+- [config.yamlの設定](#configyamlの設定)
 - [Cloud Tasksによる非同期処理](#cloud-tasksによる非同期処理)
 - [ローカル起動とテスト](#ローカル起動)
 - [Cloud Runへのデプロイと既存環境の更新](#cloud-runへデプロイ)
@@ -61,6 +62,18 @@ Go + chiで作る、IAPで保護されたブックマークサービスです。
 
 「まだ」の一覧は保存日時順に読み進めて未理解の記事を集め、1ページ最大20件を表示します。理解済みの記事が多い場合は、通常のマイブックマーク一覧よりFirestoreの読み取りが増えます。
 
+### タグの自動割り当て
+
+画面でタグを空欄にする、またはAPIで `tags` を省略・空配列にすると、記事や動画の内容に合うタグを2〜3個自動で割り当てます。候補は [config.yaml](config.yaml) の `tags` から選びます。手動入力のタグは候補リスト外のものも使用できます。
+
+- 新しい記事では、要約と同じGemini応答からタグを生成し、要約が成功した際に保存します。タグだけの追加API呼び出しは行いません。
+- 同じ記事に生成済みの候補があれば、登録時にすぐ再利用します。現在の設定候補に合わない過去の候補は再利用しません。
+- 要約済みでも候補がない記事は、タグ未指定で保存した際に要約を再生成します。通常の利用上限が適用されます。
+- 保存時にタグを指定した場合や、生成中に手動でタグを付けた場合は、自動タグで上書きしません。
+- 要約に失敗した場合や、生成タグの個数・候補・重複の検証に通らない場合は、自動タグを保存しません。
+
+自動タグはブックマークごとに保存します。生成済みの候補は記事側にも保存して共有し、同じ記事のタグが空のブックマークに割り当てます。画面では要約の進捗取得に合わせてタグ表示も更新します。
+
 ## 記事・画像・YouTubeの要約
 
 URLを保存すると、要約を非同期で作成します。完了を待たずに保存が終わり、画面には進捗が表示されます。完了すると、簡潔な日本語タイトル・TL;DR・最大5項目の要約に更新します。要約の詳しさと再生成については「[TL;DRと具体的な要約](#tldrと具体的な要約)」を参照してください。
@@ -98,6 +111,8 @@ URLを保存すると、要約を非同期で作成します。完了を待た�
 
 要約が完成した自分のブックマークでは「絵で説明する」を押せます。まず要約用のGeminiが記事固有の構図・画風・短い日本語ラベルを設計し、画像生成用のGeminiがイラスト付きの1枚絵を描きます。構図を固定せず、内容に応じて対象物の断面、場面、前後の変化、視覚的な比喩などで重要な情報を説明します。画像生成モデルは `GEMINI_IMAGE_MODEL`（既定: `gemini-3-pro-image`）、リージョンは `GEMINI_IMAGE_LOCATION`（既定: `global`）で指定できます。画像生成は要約用モデルとは別の料金が発生します。
 
+白〜薄いグレーの背景に余白を取り、簡潔な2Dイラストと大きな日本語ラベルを使います。青・赤・黄・緑はGoogleカラーの色合いを少し抑えた配色で、青を主色にアクセントは最大2色とします。発光・ネオン・強い影・写実的な3Dなどは避け、要点と読む順番が分かる図を生成するよう指示しています。
+
 生成は専用ジョブで非同期に進み、ページを離れても続きます。生成した画像をGeminiが元の要約と照合し、出典にない数値や矢印の誤りなどを検出した場合は1回修正して再確認します。この確認で誤りを完全に排除できるわけではありません。完成した図解は要約の下に表示され、クリックで拡大できます。「絵を作り直す」で既存のSVG図解も画像形式に更新できます。生成・確認に失敗した場合はエラーを表示して再試行でき、古い固定レイアウトへ自動で戻すことはありません。要約を作り直すと古い画像は無効になり、保存済みの画像データも削除します。
 
 図解の生成は要約と共通の利用上限（1分3件・1日50件）に含まれます。本文ではなく保存済みの要約をGeminiに渡します。2Kの画像を要求し、PNGまたは必要に応じてJPEGに変換して850 KiB以下で保存します。画像本体は `infographic_images` の専用ドキュメントに保存し、一覧取得では読み込みません。新規バケットや追加のIAM権限は不要です。`make indexes` は画像フィールドをインデックス対象から除外します。保存と記事の完成状態はジョブ所有権・要約バージョンを確認した同じトランザクションで更新します。
@@ -112,6 +127,14 @@ URLを保存すると、要約を非同期で作成します。完了を待た�
 - 視聴制限やモデル側の制約で動画を読めない場合は、失敗理由を表示します。
 
 動画はGeminiに映像・音声を直接渡す処理です。HTML記事向けの「重要な画像を最大3枚選ぶ」処理とは別に実行します。動画入力は[Google公式サンプル](https://cloud.google.com/vertex-ai/generative-ai/docs/samples/googlegenaisdk-textgen-with-youtube-video)に準拠しています。
+
+### 推定コストの表示
+
+要約と図解それぞれの表示欄に、小さな文字で「推定コスト：約¥0.15」のように表示します。
+
+要約・図解の推定コストは、API応答の `usageMetadata` と [Google CloudのStandard料金](https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing)（2026-10-11確認）から算出します。1ドル150円の固定換算で、税・サーバー料金・割引は含みません。画像選択・構図設計・確認・修正と自動再試行を合算し、手動の再生成でリセットします。対応モデルは `gemini-3.8-flash` とglobalの `gemini-3-pro-image`。使用量や対応料金が不明なら「算出できません」、記録のない過去の結果は非表示です。
+
+算出条件の説明は金額に付いたツールチップで確認できます。表示する金額は直近の生成依頼に使ったAPI料金の概算で、記事の累計費用や実際の請求額ではありません。対応料金は `internal/cost/cost.go` に定義されており、為替レートや料金は `config.yaml` では変更できません。
 
 ## Cloud Tasksによる非同期処理
 
@@ -181,10 +204,58 @@ URLを保存
 - 本番構築にはGoogle Cloud CLI、`jq`、課金を有効にしたGCPプロジェクト
 - ローカル用Google OAuthのWebクライアント、Gemini用のApplication Default Credentials（ADC）
 
+## config.yamlの設定
+
+タグ候補と許可アカウントは、ルートの [config.yaml](config.yaml) だけで管理します。`allow_accounts.yaml` の内容はこのファイルに統合済みです。
+
+```yaml
+# 個別の許可アカウント。ドメインだけで許可する場合は空配列。
+accounts: []
+# 本番の画面・トークンAPIで許可するドメイン。
+domains:
+  - data-cloud.jp
+  - 55mp.com
+  - uname.link
+# 自動タグの候補。内容に合う2〜3個をこのリストから選びます。
+tags:
+  - 技術
+  - AI
+  - エンタメ
+  - グルメ
+  - SRE
+  - クラウド
+  - 旅行
+  - セキュリティ
+  - OSS
+  - 酒
+  - 歴史
+  - 音楽
+  - 漫画
+```
+
+| 項目 | 設定内容・検証 |
+| --- | --- |
+| `accounts` | 個別のメールアドレス。前後の空白を除去し、小文字にそろえて検証 |
+| `domains` | Google Workspace / Cloud Identityドメイン。前後の空白と先頭の `@` を除去し、小文字にそろえて検証 |
+| `tags` | 重複のない2個以上の候補。各24文字以内で、空文字・カンマ・改行は不可 |
+
+`accounts` と `domains` を合わせて、少なくとも1件の許可対象が必要です。未知のキー、重複したキー、複数のYAMLドキュメント、64 KiBを超えるファイルは受け付けません。アプリ・API・ワーカーは起動時にファイルを読み込み、不正な設定なら起動を停止します。ローカル開発でもファイルは必要です。
+
+```bash
+# タグ候補と許可アカウントを検証（クラウドの設定は変更しません）
+go run ./cmd/iap-policy --validate config.yaml
+```
+
+変更後はローカルならサービスを再起動、本番なら `make deploy` で再デプロイします。デプロイ時は同じファイルをコンテナへコピーし、許可設定からIAPアクセス権を同期します。既存のブックマークに付いたタグは、候補リストの変更だけでは書き換えません。
+
+ローカルで別の配置を使う場合は、`.env` に `CONFIG_FILE=/設定ファイルへの絶対パス` を指定できます。旧 `ALLOW_ACCOUNTS_FILE` は使用しません。`make deploy` はリポジトリ直下の `config.yaml` を使います。
+
 ## ローカル起動
 
 ```bash
 cp .env.example .env
+# config.yamlの許可アカウントと自動タグ候補を確認
+go run ./cmd/iap-policy --validate config.yaml
 make emulator
 make dev
 ```
@@ -250,18 +321,7 @@ FIRESTORE_EMULATOR_HOST=127.0.0.1:8085 go test -race ./internal/app \
 
 `.env`の`PROJECT_ID`と`GOOGLE_CLOUD_PROJECT`を、Vertex AIを有効化する実際の同一GCPプロジェクトに設定します。本番の`GOOGLE_CLOUD_PROJECT`はdeployスクリプトが`PROJECT_ID`から設定します。
 
-ルートの `config.yaml` で、自動タグ候補と許可アカウントをまとめて設定します。`tags` は重複のない2個以上の候補（各24文字まで）、`accounts` は個別のメールアドレス、`domains` はGoogle Workspace / Cloud Identityドメインです。アプリ・ワーカー・デプロイ処理は同じファイルを読みます。ファイルが空または不正ならデプロイまたはサーバー起動が失敗します。変更は再起動・再デプロイ後に反映されます。ローカルで別の配置を使う場合は `CONFIG_FILE` でパスを指定できます。
-
-```yaml
-accounts:
-  - reader@example.com
-domains:
-  - data-cloud.jp
-tags:
-  - 技術
-  - AI
-  - OSS
-```
+自動タグ候補と許可アカウントを「[config.yamlの設定](#configyamlの設定)」で確認してからデプロイします。
 
 ```bash
 gcloud auth login
@@ -338,7 +398,10 @@ FirestoreへはサーバーSDKとIAMでアクセスします。ブラウザー�
 ```text
 cmd/server/          HTTPサーバー・起動と終了
 internal/app/        chiルート、IAP/ローカルGoogle認証、CSRF、画面と要約の制御
+internal/configfile/ config.yamlの読み込み・タグ候補と許可アカウントの検証
 internal/iap/        許可リスト、IAP署名検証、ポリシー同期
+internal/summary/    要約スタイル、生成結果、自動タグの検証
+internal/cost/       API使用量から推定コストを算出
 internal/store/      Firestoreのトランザクション、セッション、生成制限
 internal/content/    公開URLの安全な取得、本文抽出、Gemini API
 internal/web/        Goに埋め込むテンプレート・CSS・JavaScript
@@ -362,10 +425,13 @@ scripts/             初期構築、Secret登録、インデックス、デプ�
 
 ## 実装確認
 
-2026-10-10時点で、今回の変更について次を実行し、成功を確認しています。
+2026-10-12の自動タグ・設定統合までに、次の確認を行っています。
 
 - `make test vet build`：race検出付きテスト、静的解析、サーバービルド。
-- `make test-integration`：Firestore Emulatorを使う保存・所有者チェック・評価・理解状態・要約ジョブなどの統合テストと、既存のブラウザテスト。
+- 既存機能の `make test-integration`：Firestore Emulatorを使う保存・所有者チェック・評価・理解状態・要約ジョブなどの統合テストと、既存のブラウザテスト。
+- 自動タグのFirestore統合テスト：手動タグの保持、実行権チェック、生成済み候補の再利用、過去の記事の再生成。
+- `config.yaml` の検証テスト：独自のタグ候補、許可アカウント、未知のキー・重複・複数ドキュメントの拒否。
+- コスト表示のテスト：使用量からの算出、画面表示、再試行分の合算、古い処理による書き込みの拒否。
 - `TestImageSummaryFunctionalFlow`：画像要約の11ケースを個別にも実行。
 - `git diff --check`：差分の空白エラー確認。
 
@@ -425,9 +491,25 @@ GETでは登録できません。CookieではAPI認証できません。
 HTTPステータスとリクエスト本文（`Content-Type: application/json`）は同じです。
 Accept未指定・`*/*` のみの場合はJSONを返し、JSONとHTMLの両方を指定した場合は `q` 値を比較します（同値ならHTML）。
 
-エラーは `{"error":"説明"}` を返します。400は入力不正、401は未指定・無効・期限切れトークン、
+JSON形式のエラー応答は `{"error":"説明"}` を返します。400は入力不正、401は未指定・無効・期限切れトークン、
 403は許可されていないアカウント、415はJSON以外、429は利用上限、503は保存先の一時エラーです。
 コメントは500文字、タグは5つまで・各24文字、リクエスト本文は16KiBまでです。
+
+### HTMLの登録結果を受け取る
+
+`Accept: text/html` を指定すると、登録結果をHTMLで受け取れます。次の例はタグを省略して自動割り当てを利用し、HTMLを `result.html` に保存します。APIは要約やタグ生成の完了を待たずに応答します。
+
+```bash
+SHIORI_API_URL='https://APIホスト/api/bookmarks'
+SHIORI_TOKEN='発行したAPIトークン'
+
+curl --request POST "${SHIORI_API_URL}" \
+  --header "x-shiori-api: ${SHIORI_TOKEN}" \
+  --header 'Accept: text/html' \
+  --header 'Content-Type: application/json' \
+  --data '{"url":"https://example.com/article","comment":"あとで読む"}' \
+  --output result.html
+```
 
 ### 本番デプロイ
 
