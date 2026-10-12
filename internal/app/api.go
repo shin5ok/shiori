@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -46,56 +48,104 @@ func apiJSON(w http.ResponseWriter, status int, value any) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
 }
-func apiError(w http.ResponseWriter, status int, message string) {
-	apiJSON(w, status, map[string]string{"error": message})
+func (a *App) apiError(w http.ResponseWriter, r *http.Request, status int, message string) {
+	a.apiResponse(w, r, status, map[string]string{"error": message})
 }
 
-func apiTokenError(w http.ResponseWriter, code, message string) {
-	apiJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid token", "code": code, "message": message})
+func (a *App) apiTokenError(w http.ResponseWriter, r *http.Request, code, message string) {
+	a.apiResponse(w, r, http.StatusUnauthorized, map[string]string{"error": "invalid token", "code": code, "message": message})
+}
+
+// Prefer HTML only when explicitly accepted; wildcard-only clients keep JSON.
+func acceptsAPIHTML(r *http.Request) bool {
+	htmlQuality, jsonQuality := -1.0, -1.0
+	for _, header := range r.Header.Values("Accept") {
+		for _, item := range strings.Split(header, ",") {
+			media, params, err := mime.ParseMediaType(strings.TrimSpace(item))
+			if err != nil {
+				continue
+			}
+			quality := 1.0
+			if raw, ok := params["q"]; ok {
+				quality, err = strconv.ParseFloat(raw, 64)
+				if err != nil || !(quality >= 0 && quality <= 1) {
+					continue
+				}
+			}
+			switch media {
+			case "text/html":
+				htmlQuality = max(htmlQuality, quality)
+			case "application/json":
+				jsonQuality = max(jsonQuality, quality)
+			}
+		}
+	}
+	return htmlQuality > 0 && htmlQuality >= jsonQuality
+}
+
+func (a *App) apiResponse(w http.ResponseWriter, r *http.Request, status int, result map[string]string) {
+	w.Header().Add("Vary", "Accept")
+	if !acceptsAPIHTML(r) {
+		apiJSON(w, status, result)
+		return
+	}
+	nonce := store.RandomToken()
+	policy := w.Header().Get("Content-Security-Policy")
+	w.Header().Set("Content-Security-Policy", strings.Replace(policy, "style-src 'self'", "style-src 'self' 'nonce-"+nonce+"'", 1))
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.WriteHeader(status)
+	if err := a.templates.ExecuteTemplate(w, "api-result", struct {
+		Result         map[string]string
+		HomeURL, Nonce string
+		Success        bool
+	}{result, a.cfg.BaseURL + "/", nonce, status < 400}); err != nil {
+		slog.Error("render API result", "error", err)
+	}
 }
 
 func (a *App) saveAPI(w http.ResponseWriter, r *http.Request) {
 	// API authentication never falls back to browser cookies or IAP headers.
 	q, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil {
-		apiError(w, 400, "invalid query")
+		a.apiError(w, r, 400, "invalid query")
 		return
 	}
 	values := q["token"]
 	headers := r.Header.Values("X-Shiori-Api")
 	if (len(values) > 0 && len(headers) > 0) || len(values) > 1 || len(headers) > 1 || (len(headers) == 1 && strings.Contains(headers[0], ",")) {
-		apiTokenError(w, "token_ambiguous", "URLのクエリパラメータ token または x-shiori-api ヘッダーのどちらか一方に、トークンを1つだけ指定してください。")
+		a.apiTokenError(w, r, "token_ambiguous", "URLのクエリパラメータ token または x-shiori-api ヘッダーのどちらか一方に、トークンを1つだけ指定してください。")
 		return
 	}
 	if len(headers) > 0 {
 		values = headers
 	}
 	if len(values) == 0 || strings.TrimSpace(values[0]) == "" {
-		apiTokenError(w, "token_missing", "URLのクエリパラメータ token または x-shiori-api ヘッダーに、発行したトークンを指定してください。")
+		a.apiTokenError(w, r, "token_missing", "URLのクエリパラメータ token または x-shiori-api ヘッダーに、発行したトークンを指定してください。")
 		return
 	}
 	// Tokens use only URL-safe ASCII; surrounding clipboard whitespace is not part of the secret.
 	rawToken := strings.TrimSpace(values[0])
 	uid, secret, ok := strings.Cut(rawToken, ".")
 	if !ok || !validID.MatchString(uid) || len(secret) != 43 {
-		apiTokenError(w, "token_malformed", "トークンは108文字（64文字のID・ドット・43文字の秘密値）です。発行画面から全体をコピーし、前後に空白や改行を含めないでください。")
+		a.apiTokenError(w, r, "token_malformed", "トークンは108文字（64文字のID・ドット・43文字の秘密値）です。発行画面から全体をコピーし、前後に空白や改行を含めないでください。")
 		return
 	}
 	token, err := a.db.APIToken(r.Context(), uid)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		apiError(w, 503, "token lookup failed")
+		a.apiError(w, r, 503, "token lookup failed")
 		return
 	}
 	if err != nil || token.User.ID != uid || subtle.ConstantTimeCompare([]byte(token.Hash), []byte(store.Hash(rawToken))) != 1 {
-		apiTokenError(w, "token_invalid", "現在のトークンと一致しません。発行元のAPIエンドポイントを確認し、再発行した最新のトークンを使用してください。再発行前や失効済みのトークンは使えません。")
+		a.apiTokenError(w, r, "token_invalid", "現在のトークンと一致しません。発行元のAPIエンドポイントを確認し、再発行した最新のトークンを使用してください。再発行前や失効済みのトークンは使えません。")
 		return
 	}
 	if !token.ExpiresAt.After(time.Now()) {
-		apiTokenError(w, "token_expired", "トークンの有効期限が切れています。ログインしてAPIトークンを再発行してください。")
+		a.apiTokenError(w, r, "token_expired", "トークンの有効期限が切れています。ログインしてAPIトークンを再発行してください。")
 		return
 	}
 	if a.cfg.Env == "production" && !a.cfg.IAPAllowlist.Allows(token.Email) {
-		apiError(w, 403, "account is not allowed")
+		a.apiError(w, r, 403, "account is not allowed")
 		return
 	}
 	var input struct {
@@ -105,45 +155,45 @@ func (a *App) saveAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
-		apiError(w, 415, "Content-Type must be application/json")
+		a.apiError(w, r, 415, "Content-Type must be application/json")
 		return
 	}
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&input); err != nil {
-		apiError(w, 400, "invalid JSON")
+		a.apiError(w, r, 400, "invalid JSON")
 		return
 	}
 	if err := dec.Decode(new(any)); err != io.EOF {
-		apiError(w, 400, "expected one JSON object")
+		a.apiError(w, r, 400, "expected one JSON object")
 		return
 	}
 	for _, tag := range input.Tags {
 		if strings.Contains(tag, ",") {
-			apiError(w, 400, "tags cannot contain commas")
+			a.apiError(w, r, 400, "tags cannot contain commas")
 			return
 		}
 	}
 	extracted, err := extractSingleAPIURL(input.URL)
 	if err != nil {
-		apiError(w, 400, err.Error())
+		a.apiError(w, r, 400, err.Error())
 		return
 	}
 	raw, comment, tags, err := bookmarkInput(url.Values{"url": {extracted}, "comment": {input.Comment}, "tags": {strings.Join(input.Tags, ",")}})
 	if err != nil {
-		apiError(w, 400, err.Error())
+		a.apiError(w, r, 400, err.Error())
 		return
 	}
 	article, err := a.db.Save(r.Context(), token.User, raw, comment, tags)
 	if err != nil {
 		if errors.Is(err, store.ErrRateLimited) {
-			apiError(w, 429, "quota exceeded")
+			a.apiError(w, r, 429, "quota exceeded")
 			return
 		}
-		apiError(w, 503, "save failed")
+		a.apiError(w, r, 503, "save failed")
 		return
 	}
-	apiJSON(w, 200, map[string]string{"id": article.ID, "url": article.URL, "title": article.Title, "status": article.Status, "article_url": a.cfg.BaseURL + "/articles/" + article.ID})
+	a.apiResponse(w, r, 200, map[string]string{"id": article.ID, "url": article.URL, "title": article.Title, "status": article.Status, "article_url": a.cfg.BaseURL + "/articles/" + article.ID, "redirect_url": a.cfg.BaseURL + "/"})
 }
 
 func (a *App) tokenSettings(w http.ResponseWriter, r *http.Request) {

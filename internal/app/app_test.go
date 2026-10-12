@@ -32,6 +32,22 @@ func testApp(t *testing.T) *App {
 	}
 	return a
 }
+
+func TestUnknownPathsRedirectHome(t *testing.T) {
+	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodPost} {
+		for _, path := range []string{"/missing", "/missing/nested?token=secret"} {
+			t.Run(method+path, func(t *testing.T) {
+				a := testApp(t)
+				w := httptest.NewRecorder()
+				a.Handler().ServeHTTP(w, httptest.NewRequest(method, path, nil))
+				if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/" {
+					t.Fatalf("status=%d location=%q", w.Code, w.Header().Get("Location"))
+				}
+			})
+		}
+	}
+}
+
 func TestProtectedRoutes(t *testing.T) {
 	a := testApp(t)
 	for _, path := range []string{"/bookmarks", "/bookmarks/abc/delete", "/articles/abc/summary", "/logout", "/settings/api/issue", "/settings/api/revoke"} {

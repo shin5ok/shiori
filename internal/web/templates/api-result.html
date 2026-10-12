@@ -1,0 +1,39 @@
+{{define "api-result"}}
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{if .Success}}ブックマークを登録しました{{else}}登録できませんでした{{end}} — Shiori</title>
+  <style nonce="{{.Nonce}}">
+    body { margin: 0; padding: 40px 20px; background: #f5f5f0; color: #24312b; font: 16px/1.7 system-ui, sans-serif; }
+    main { max-width: 600px; margin: 0 auto; padding: 32px; background: white; border: 1px solid #ddd; border-radius: 16px; }
+    h1 { font-size: 24px; line-height: 1.4; }
+    a { color: #226044; overflow-wrap: anywhere; }
+    dt { font-weight: bold; margin-top: 16px; }
+    dd { margin: 4px 0; overflow-wrap: anywhere; }
+    .home { display: inline-block; margin-top: 20px; padding: 10px 18px; background: #226044; color: white; border-radius: 8px; text-decoration: none; }
+    .home-url { font-size: 14px; }
+    @media (max-width: 480px) { main { padding: 20px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <p>Shiori</p>
+    {{if .Success}}
+    <h1>ブックマークを登録しました</h1>
+    <dl>
+      {{with .Result.title}}<dt>タイトル</dt><dd>{{.}}</dd>{{end}}
+      <dt>登録したURL</dt><dd><a href="{{.Result.url}}">{{.Result.url}}</a></dd>
+    </dl>
+    <p><a href="{{.Result.article_url}}">記事の詳細を見る</a></p>
+    {{else}}
+    <h1>登録できませんでした</h1>
+    <p>{{if .Result.message}}{{.Result.message}}{{else}}{{.Result.error}}{{end}}</p>
+    {{end}}
+    <a class="home" href="{{.HomeURL}}">トップページへ</a>
+    <p class="home-url"><a href="{{.HomeURL}}">{{.HomeURL}}</a></p>
+  </main>
+</body>
+</html>
+{{end}}

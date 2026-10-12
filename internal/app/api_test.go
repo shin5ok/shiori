@@ -104,6 +104,9 @@ func TestAPISavesForTokenOwner(t *testing.T) {
 			if result["id"] != store.Hash(db.savedURL) || result["status"] != "queued" {
 				t.Fatalf("response=%v", result)
 			}
+			if result["redirect_url"] != "https://shiori.example/" {
+				t.Fatalf("redirect_url=%q", result["redirect_url"])
+			}
 			if w.Header().Get("Set-Cookie") != "" || strings.Contains(w.Body.String(), raw) {
 				t.Fatal("API leaked credentials or created cookie")
 			}
@@ -256,7 +259,7 @@ func TestWebProductionDoesNotExposeTokenAPI(t *testing.T) {
 	a.cfg.APIOnly = false
 	w := httptest.NewRecorder()
 	a.Handler().ServeHTTP(w, httptest.NewRequest("POST", "/api/bookmarks", nil))
-	if w.Code != 404 {
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/" {
 		t.Fatalf("web API status: %d", w.Code)
 	}
 }

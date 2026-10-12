@@ -112,6 +112,9 @@ func (a *App) Handler() http.Handler {
 	if a.cfg.APIOnly {
 		return r
 	}
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+	})
 	static, _ := fs.Sub(web.Files, "static")
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.FS(static))))
 	r.Group(func(r chi.Router) {

@@ -407,8 +407,14 @@ GETでは登録できません。CookieではAPI認証できません。
 成功時はHTTP 200のJSONです。
 
 ```json
-{"id":"記事ID","url":"https://example.com/article","title":"example.com","status":"queued","article_url":"https://画面のホスト/articles/記事ID"}
+{"id":"記事ID","url":"https://example.com/article","title":"example.com","status":"queued","article_url":"https://画面のホスト/articles/記事ID","redirect_url":"https://画面のホスト/"}
 ```
+
+`redirect_url` は登録後にトップページへ移動するためのURLです。
+
+`Accept: text/html` を送ると、成功・エラーの処理結果とトップページへのリンクを含む整形済みHTMLを返します。
+HTTPステータスとリクエスト本文（`Content-Type: application/json`）は同じです。
+Accept未指定・`*/*` のみの場合はJSONを返し、JSONとHTMLの両方を指定した場合は `q` 値を比較します（同値ならHTML）。
 
 エラーは `{"error":"説明"}` を返します。400は入力不正、401は未指定・無効・期限切れトークン、
 403は許可されていないアカウント、415はJSON以外、429は利用上限、503は保存先の一時エラーです。

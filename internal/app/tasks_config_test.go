@@ -1,6 +1,7 @@
 package app
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -36,7 +37,14 @@ func TestPublicAppDoesNotExposeTaskEndpoint(t *testing.T) {
 		}
 		w := httptest.NewRecorder()
 		a.Handler().ServeHTTP(w, httptest.NewRequest("POST", "/tasks/summary", strings.NewReader(`{}`)))
-		if w.Code != 404 {
+		want := http.StatusNotFound
+		if !apiOnly {
+			want = http.StatusSeeOther
+			if w.Header().Get("Location") != "/" {
+				t.Fatalf("unexpected redirect: %q", w.Header().Get("Location"))
+			}
+		}
+		if w.Code != want {
 			t.Fatalf("APIOnly=%v exposed task route: %d", apiOnly, w.Code)
 		}
 	}
