@@ -107,3 +107,11 @@
 .tag-chips a[aria-current] { background: var(--blue); border-color: var(--blue); color: #fff; }
 .tag-chips a[aria-current] span { color: #dbe8ff; }
 @media(max-width:640px){.tag-nav{margin:10px -6px 0;padding-top:10px}.tag-nav-title{display:none}.tag-chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}.tag-chips a{flex:0 0 auto}.sidebar-note{display:none}}
+
+.account-menu { position: relative; }
+.account-menu > summary { display: flex; align-items: center; gap: 6px; min-height: 44px; max-width: 220px; cursor: pointer; list-style: none; font-weight: 600; }
+.account-menu > summary::-webkit-details-marker { display: none; }
+.account-menu .caret { font-size: 11px; color: var(--muted); }
+.account-popup { position: absolute; right: 0; top: 100%; z-index: 15; min-width: 160px; padding: 6px; display: grid; gap: 2px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 30px #172b4222; }
+.account-popup a, .account-popup button { display: flex; align-items: center; width: 100%; min-height: 44px; padding: 8px 12px; border: 0; border-radius: 7px; background: none; color: var(--ink); font-size: 13px; text-align: left; }
+.account-popup a:hover, .account-popup button:hover, .account-popup a[aria-current] { background: #edf1f7; color: var(--blue); }

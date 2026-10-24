@@ -350,4 +350,11 @@
   document.querySelectorAll('.delete-form, .quick-delete').forEach(form => form.addEventListener('submit', event => {
     if (!window.confirm('このブックマークを削除しますか？')) event.preventDefault();
   }));
+  const accountMenu = document.querySelector('.account-menu');
+  if (accountMenu) {
+    document.addEventListener('click', event => { if (!accountMenu.contains(event.target)) accountMenu.open = false; });
+    accountMenu.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { accountMenu.open = false; accountMenu.querySelector('summary').focus(); }
+    });
+  }
 })();
