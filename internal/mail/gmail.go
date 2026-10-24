@@ -60,9 +60,9 @@ func (g *Gmail) Send(ctx context.Context, to, subject, body string) error {
 		return fmt.Errorf("send mail: %w", err)
 	}
 	defer resp.Body.Close()
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	detail, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<10))
 	if resp.StatusCode/100 != 2 {
-		return fmt.Errorf("send mail: Gmail returned HTTP %d", resp.StatusCode)
+		return fmt.Errorf("send mail: Gmail returned HTTP %d: %s", resp.StatusCode, strings.Join(strings.Fields(string(detail)), " "))
 	}
 	return nil
 }

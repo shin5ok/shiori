@@ -88,7 +88,14 @@ func (g *Grants) call(ctx context.Context, method string, body []byte) ([]byte, 
 		return nil, &conflictError{resp.StatusCode}
 	}
 	if resp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("IAP %s failed: HTTP %d", strings.TrimPrefix(method, ":"), resp.StatusCode)
+		return nil, fmt.Errorf("IAP %s failed: HTTP %d: %s", strings.TrimPrefix(method, ":"), resp.StatusCode, truncate(strings.Join(strings.Fields(string(data)), " "), 500))
 	}
 	return data, nil
+}
+
+func truncate(s string, n int) string {
+	if len(s) > n {
+		return s[:n] + "..."
+	}
+	return s
 }
