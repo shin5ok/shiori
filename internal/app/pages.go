@@ -14,20 +14,20 @@ import (
 )
 
 type Page struct {
-	TokenSettings, TokenActive bool
-	AccountSettings            bool
-	TagList                    []store.TagCount
-	Tag, Return                string
-	TagBase, ClearTag          string
-	Accounts                   *AccountsPage
-	APIEndpoint, IssuedToken   string
-	TokenExpires               time.Time
-	Title, Mode, Next, Error   string
-	Session                    *store.Session
-	Entries                    []store.Entry
-	Comments                   []store.Bookmark
-	Detail                     bool
-	Status                     int
+	TokenSettings, TokenActive     bool
+	AccountSettings                bool
+	TagList                        []store.TagCount
+	Tag, Return                    string
+	TagBase, ClearTag              string
+	Accounts                       *AccountsPage
+	APIEndpoint, IssuedToken       string
+	TokenExpires                   time.Time
+	Title, Mode, Next, Prev, Error string
+	Session                        *store.Session
+	Entries                        []store.Entry
+	Comments                       []store.Bookmark
+	Detail                         bool
+	Status                         int
 }
 
 func (a *App) render(w http.ResponseWriter, r *http.Request, status int, p Page) {
@@ -117,22 +117,41 @@ func (a *App) feed(w http.ResponseWriter, r *http.Request) {
 	if mode == "unread" {
 		tagBase, clearTag = "/?filter=unread&", "/?filter=unread"
 	}
-	nextURL := ""
-	if next != "" {
+	pageURL := func(c string) string {
 		if mode == "mine" || mode == "unread" {
-			v := url.Values{"cursor": {next}}
+			v := url.Values{}
+			if c != "" {
+				v.Set("cursor", c)
+			}
 			if mode == "unread" {
 				v.Set("filter", "unread")
 			}
 			if tag != "" {
 				v.Set("tag", tag)
 			}
-			nextURL = "/?" + v.Encode()
-		} else {
-			nextURL = "/" + mode + "?cursor=" + next
+			if len(v) == 0 {
+				return "/"
+			}
+			return "/?" + v.Encode()
 		}
+		if c == "" {
+			return "/" + mode
+		}
+		return "/" + mode + "?cursor=" + c
 	}
-	a.render(w, r, 200, Page{Title: title, Mode: mode, Entries: entries, Next: nextURL, TagList: tagList, Tag: tag, Return: r.URL.RequestURI(), TagBase: tagBase, ClearTag: clearTag})
+	nextURL, prevURL := "", ""
+	if next != "" {
+		nextURL = pageURL(next)
+	}
+	if cursor != "" {
+		prev, err := a.db.PrevCursor(r.Context(), mode, uid, tag, cursor)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		prevURL = pageURL(prev)
+	}
+	a.render(w, r, 200, Page{Title: title, Mode: mode, Entries: entries, Next: nextURL, Prev: prevURL, TagList: tagList, Tag: tag, Return: r.URL.RequestURI(), TagBase: tagBase, ClearTag: clearTag})
 }
 func (a *App) detail(w http.ResponseWriter, r *http.Request) {
 	id, ok := a.id(w, r)

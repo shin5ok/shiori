@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -164,5 +165,33 @@ func TestTagsAndListByTag(t *testing.T) {
 	}
 	if _, _, err = s.ListByTag(ctx, "new", u.ID, "技術", ""); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("public feed tag filter: %v", err)
+	}
+}
+
+func TestPrevCursorWalksBackThroughPages(t *testing.T) {
+	s, ctx := ratingTestStore(t)
+	u := User{ID: "prev-user"}
+	for i := 0; i < PageSize*2+5; i++ {
+		if _, err := s.Save(ctx, u, fmt.Sprintf("https://example.com/prev/%d", i), "", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page1, c1, err := s.List(ctx, "mine", u.ID, "")
+	if err != nil || len(page1) != PageSize || c1 == "" {
+		t.Fatalf("page1: %d %q %v", len(page1), c1, err)
+	}
+	page2, c2, err := s.List(ctx, "mine", u.ID, c1)
+	if err != nil || len(page2) != PageSize || c2 == "" {
+		t.Fatalf("page2: %d %q %v", len(page2), c2, err)
+	}
+	if prev, err := s.PrevCursor(ctx, "mine", u.ID, "", c1); err != nil || prev != "" {
+		t.Fatalf("prev of page2 should be the first page: %q %v", prev, err)
+	}
+	prev, err := s.PrevCursor(ctx, "mine", u.ID, "", c2)
+	if err != nil || prev != c1 {
+		t.Fatalf("prev of page3 = %q, want %q (%v)", prev, c1, err)
+	}
+	if _, err := s.PrevCursor(ctx, "mine", "someone-else", "", c2); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("another user's cursor: %v", err)
 	}
 }

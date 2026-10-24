@@ -222,24 +222,90 @@ func (s *Store) ListByTag(ctx context.Context, mode, uid, tag, cursor string) ([
 	return s.list(ctx, mode, uid, tag, cursor)
 }
 
-func (s *Store) list(ctx context.Context, mode, uid, tag, cursor string) ([]Entry, string, error) {
-	mine := mode == "mine" || mode == "unread"
-	var q firestore.Query
-	if mine {
+// listQuery orders the listing newest first, or oldest first when reverse is set.
+func (s *Store) listQuery(mode, uid, tag string, reverse bool) firestore.Query {
+	dir := firestore.Desc
+	if reverse {
+		dir = firestore.Asc
+	}
+	if mode == "mine" || mode == "unread" {
 		base := s.client.Collection("bookmarks").Where("user_id", "==", uid)
 		if tag != "" {
 			base = base.Where("tags", "array-contains", tag)
 		}
-		q = base.OrderBy("created_at", firestore.Desc).OrderBy(firestore.DocumentID, firestore.Desc)
-	} else {
-		q = s.client.Collection("articles").Where("active", "==", true)
-		if mode == "popular" {
-			q = q.OrderBy("rating_total", firestore.Desc)
-		} else {
-			q = q.OrderBy("created_at", firestore.Desc)
-		}
-		q = q.OrderBy(firestore.DocumentID, firestore.Desc)
+		return base.OrderBy("created_at", dir).OrderBy(firestore.DocumentID, dir)
 	}
+	q := s.client.Collection("articles").Where("active", "==", true)
+	if mode == "popular" {
+		q = q.OrderBy("rating_total", dir)
+	} else {
+		q = q.OrderBy("created_at", dir)
+	}
+	return q.OrderBy(firestore.DocumentID, dir)
+}
+
+// PrevCursor returns the cursor of the page before the one that starts after
+// cursor. An empty result means the previous page is the first page.
+func (s *Store) PrevCursor(ctx context.Context, mode, uid, tag, cursor string) (string, error) {
+	if cursor == "" {
+		return "", nil
+	}
+	mine := mode == "mine" || mode == "unread"
+	ref := s.article(cursor)
+	if mine {
+		ref = s.client.Collection("bookmarks").Doc(cursor)
+	}
+	d, err := ref.Get(ctx)
+	if err != nil {
+		return "", normalizeError(err)
+	}
+	if mine {
+		var b Bookmark
+		if err = d.DataTo(&b); err != nil {
+			return "", err
+		}
+		if b.UserID != uid {
+			return "", ErrNotFound
+		}
+	}
+	// Walk backwards from the cursor document itself: it is the last item of
+	// the previous page, and the item after PageSize matches is its cursor.
+	q := s.listQuery(mode, uid, tag, true).StartAt(d)
+	var docs []*firestore.DocumentSnapshot
+	for len(docs) <= PageSize {
+		batch, err := q.Limit(PageSize + 1).Documents(ctx).GetAll()
+		if err != nil {
+			return "", err
+		}
+		for _, bd := range batch {
+			if mode == "unread" {
+				var bookmark Bookmark
+				if err := bd.DataTo(&bookmark); err != nil {
+					return "", err
+				}
+				if bookmark.Understood && bd.Ref.ID != cursor {
+					continue
+				}
+			}
+			docs = append(docs, bd)
+			if len(docs) > PageSize {
+				break
+			}
+		}
+		if len(batch) < PageSize+1 || len(docs) > PageSize {
+			break
+		}
+		q = q.StartAfter(batch[len(batch)-1])
+	}
+	if len(docs) > PageSize {
+		return docs[PageSize].Ref.ID, nil
+	}
+	return "", nil
+}
+
+func (s *Store) list(ctx context.Context, mode, uid, tag, cursor string) ([]Entry, string, error) {
+	mine := mode == "mine" || mode == "unread"
+	q := s.listQuery(mode, uid, tag, false)
 	if cursor != "" {
 		ref := s.article(cursor)
 		if mine {

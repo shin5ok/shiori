@@ -52,3 +52,18 @@ func (d previewDB) Tags(context.Context, string, int) ([]store.TagCount, error) 
 func (d previewDB) ListByTag(context.Context, string, string, string, string) ([]store.Entry, string, error) {
 	return nil, "", nil
 }
+func (d *authDB) PrevCursor(context.Context, string, string, string, string) (string, error) {
+	return "", nil
+}
+func (d *apiTestDB) PrevCursor(context.Context, string, string, string, string) (string, error) {
+	return "", nil
+}
+func (d *iapTestDB) PrevCursor(context.Context, string, string, string, string) (string, error) {
+	return "", nil
+}
+func (d testDB) PrevCursor(context.Context, string, string, string, string) (string, error) {
+	return "", nil
+}
+func (d previewDB) PrevCursor(context.Context, string, string, string, string) (string, error) {
+	return "", nil
+}
