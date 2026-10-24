@@ -19,6 +19,7 @@ Go + chiで作る、IAPで保護されたブックマークサービスです。
 - [タグの自動割り当て](#タグの自動割り当て)
 - [記事・画像・YouTubeの要約](#記事画像youtubeの要約)
 - [推定コストの表示](#推定コストの表示)
+- [アカウントの名寄せ](#アカウントの名寄せ)
 - [config.yamlの設定](#configyamlの設定)
 - [Cloud Tasksによる非同期処理](#cloud-tasksによる非同期処理)
 - [ローカル起動とテスト](#ローカル起動)
@@ -203,6 +204,22 @@ URLを保存
 - Docker / Docker Compose（`docker-compose`コマンド。必要なら`docker compose`に読み替え）
 - 本番構築にはGoogle Cloud CLI、`jq`、課金を有効にしたGCPプロジェクト
 - ローカル用Google OAuthのWebクライアント、Gemini用のApplication Default Credentials（ADC）
+
+## アカウントの名寄せ
+
+複数のGoogleアカウントを同じアカウントとして使えます（ベースアカウントごとに最大5個）。ベースアカウントの「名寄せ」画面（`/settings/accounts`）で追加したいメールアドレスを入力すると確認メールが届き、そのアカウントでリンクを開いて承認すると完了します。名寄せしたアカウントでは、ベースアカウントのブックマーク・APIトークンを操作します。名寄せ前にそのアカウントで保存したブックマークは移行されず、表示されなくなります。リンクの有効期限は24時間です。
+
+### 仕組みと設定
+
+- Firestoreには `account_invites`（確認待ち）と `account_links`（名寄せ済み）だけを保存します。データは移行しません。
+- IAPは未登録アカウントをリンクを開く前に拒否するため、招待時にアプリがIAPの許可リストへ追加します。追加先はアプリ専用の条件付きバインディング `shiori-linked-accounts` で、`make deploy` は `config.yaml` 由来のバインディングだけを更新し、これを残します。解除時や招待の期限切れ後（設定画面を開いたとき）に、他で使われていなければ削除します。反映には数分かかることがあります。
+- 確認メールはGmail APIで、Workspaceのドメイン全体の委任を使って `MAIL_SENDER` として送信します。`.env` に `MAIL_SENDER` を設定すると有効になり、未設定の本番環境では名寄せ機能は無効です。ローカル開発ではメールを送らずログに出力します。
+
+### 必要な手作業と権限
+
+1. `.env` に `MAIL_SENDER=送信元のWorkspaceユーザー` を設定し、`make bootstrap`（`iamcredentials`・`gmail` API有効化と、実行用サービスアカウント自身への `Service Account Token Creator`）、`make deploy` の順に実行します。
+2. Google Workspace管理コンソールの「ドメイン全体の委任」に、実行用サービスアカウント（`<SERVICE>-runtime@<PROJECT_ID>.iam.gserviceaccount.com`）のクライアントIDとスコープ `https://www.googleapis.com/auth/gmail.send` を登録します。
+3. `make deploy` は実行用サービスアカウントにこのIAPリソースの `roles/iap.admin` を付与します（許可リストを実行時に更新するため）。アプリが侵害されると任意のアカウントをIAPに通せるため、権限の増加として扱ってください。
 
 ## config.yamlの設定
 

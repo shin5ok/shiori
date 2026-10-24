@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -68,7 +69,9 @@ func (a *App) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var claims struct {
-		Name string `json:"name"`
+		Name          string `json:"name"`
+		Email         string `json:"email"`
+		EmailVerified bool   `json:"email_verified"`
 	}
 	if err = identity.Claims(&claims); err != nil {
 		a.problem(w, r, 400, "Googleプロフィールを確認できませんでした。")
@@ -81,9 +84,25 @@ func (a *App) callback(w http.ResponseWriter, r *http.Request) {
 		claims.Name = string([]rune(claims.Name)[:80])
 	}
 	// Google accepts both issuer spellings; use one namespace after verification.
-	user := store.User{ID: store.Hash("https://accounts.google.com|" + identity.Subject), Name: claims.Name}
+	loginID := store.Hash("https://accounts.google.com|" + identity.Subject)
+	user := store.User{ID: loginID, Name: claims.Name}
+	base, baseName, linked, err := a.resolveLogin(ctx, loginID)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	if linked {
+		user.ID = base
+		if baseName != "" {
+			user.Name = baseName
+		}
+	}
+	email := ""
+	if claims.EmailVerified {
+		email = strings.ToLower(claims.Email)
+	}
 	key := store.RandomToken()
-	s := store.Session{User: user, CSRF: store.RandomToken(), ExpiresAt: time.Now().Add(7 * 24 * time.Hour)}
+	s := store.Session{LoginID: loginID, Email: email, User: user, CSRF: store.RandomToken(), ExpiresAt: time.Now().Add(7 * 24 * time.Hour)}
 	if err = a.db.PutSession(ctx, key, s); err != nil {
 		a.fail(w, r, err)
 		return

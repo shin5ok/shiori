@@ -48,6 +48,19 @@ type Database interface {
 	DeleteSession(context.Context, string) error
 	PutOAuth(context.Context, string, store.OAuthState) error
 	ConsumeOAuth(context.Context, string) (store.OAuthState, error)
+	Link(context.Context, string) (store.AccountLink, error)
+	UserName(context.Context, string) (string, error)
+	LinkedAccounts(context.Context, string) ([]store.AccountLink, error)
+	PendingInvites(context.Context, string) ([]store.AccountInvite, error)
+	ReapExpiredInvites(context.Context, string) ([]string, error)
+	CreateInvite(context.Context, string, string, string, time.Duration) error
+	DeleteInvite(context.Context, string) error
+	Invite(context.Context, string) (store.AccountInvite, error)
+	ConfirmInvite(context.Context, string, string, string) (store.AccountLink, error)
+	Unlink(context.Context, string, string) (store.AccountLink, error)
+	HasLinkedEmail(context.Context, string, string) (bool, error)
+	HasPendingInvite(context.Context, string) (bool, error)
+	EmailInUse(context.Context, string) (bool, error)
 }
 type Summarizer interface {
 	Summarize(context.Context, string, string, summary.Style, string) (summary.Result, error)
@@ -63,7 +76,12 @@ type App struct {
 	iapVerifier interface {
 		Verify(context.Context, string) (iap.Identity, error)
 	}
+	mailer  Mailer
+	granter AccessGranter
 }
+
+// SetLinking enables account linking; without it invitations are unavailable.
+func (a *App) SetLinking(m Mailer, g AccessGranter) { a.mailer, a.granter = m, g }
 
 func New(cfg Config, db Database, summary Summarizer) (*App, error) {
 	funcs := template.FuncMap{"stars": func() []int { return []int{1, 2, 3, 4, 5} }, "join": strings.Join, "date": func(t time.Time) string { return t.In(time.FixedZone("JST", 9*3600)).Format("2006.01.02") }, "host": func(raw string) string {
@@ -90,7 +108,7 @@ func New(cfg Config, db Database, summary Summarizer) (*App, error) {
 		if err != nil {
 			return nil, err
 		}
-		a.oauth = &oauth2.Config{ClientID: cfg.GoogleClientID, ClientSecret: cfg.GoogleClientSecret, RedirectURL: cfg.BaseURL + "/auth/google/callback", Endpoint: provider.Endpoint(), Scopes: []string{oidc.ScopeOpenID, "profile"}}
+		a.oauth = &oauth2.Config{ClientID: cfg.GoogleClientID, ClientSecret: cfg.GoogleClientSecret, RedirectURL: cfg.BaseURL + "/auth/google/callback", Endpoint: provider.Endpoint(), Scopes: []string{oidc.ScopeOpenID, "profile", "email"}}
 		a.verifier = provider.Verifier(&oidc.Config{ClientID: cfg.GoogleClientID})
 	}
 	return a, nil
@@ -125,6 +143,8 @@ func (a *App) Handler() http.Handler {
 		r.Get("/popular", a.feed)
 		r.Get("/mine", a.feed)
 		r.With(a.requireSession).Get("/settings/api", a.tokenSettings)
+		r.With(a.requireSession).Get("/settings/accounts", a.accountSettings)
+		r.With(a.requireSession).Get("/accounts/link", a.linkConfirm)
 		r.Get("/articles/{id}", a.detail)
 		r.Get("/articles/{id}/summary", a.summaryStatus)
 		r.Get("/articles/{id}/infographic.svg", a.infographicImage)
@@ -135,6 +155,9 @@ func (a *App) Handler() http.Handler {
 			r.Use(a.requireSession, a.csrf)
 			r.Post("/settings/api/issue", a.issueToken)
 			r.Post("/settings/api/revoke", a.revokeToken)
+			r.Post("/settings/accounts/invite", a.inviteAccount)
+			r.Post("/settings/accounts/unlink", a.unlinkAccount)
+			r.Post("/accounts/link", a.linkComplete)
 			r.Post("/bookmarks", a.save)
 			r.Post("/bookmarks/{id}/delete", a.remove)
 			r.Post("/bookmarks/{id}/understood", a.setUnderstood)
@@ -169,15 +192,35 @@ func (a *App) withSession(next http.Handler) http.Handler {
 				http.Error(w, "IAP認証を確認できませんでした。", http.StatusUnauthorized)
 				return
 			}
-			if !a.cfg.IAPAllowlist.Allows(identity.Email) {
-				http.Error(w, "このアカウントにはアクセス権がありません。", http.StatusForbidden)
+			loginID := store.Hash("https://accounts.google.com|" + identity.Subject)
+			base, baseName, linked, err := a.resolveLogin(r.Context(), loginID)
+			if err != nil {
+				a.fail(w, r, err)
 				return
 			}
-			uid := store.Hash("https://accounts.google.com|" + identity.Subject)
+			if !a.cfg.IAPAllowlist.Allows(identity.Email) && !linked {
+				// Invited accounts may reach only the confirmation page until they link.
+				pending := false
+				if strings.HasPrefix(r.URL.Path, "/accounts/link") {
+					if pending, err = a.db.HasPendingInvite(r.Context(), identity.Email); err != nil {
+						a.fail(w, r, err)
+						return
+					}
+				}
+				if !pending {
+					http.Error(w, "このアカウントにはアクセス権がありません。", http.StatusForbidden)
+					return
+				}
+			}
 			if c, err := r.Cookie(a.cfg.cookieName()); err == nil && len(c.Value) <= 128 {
 				s, err := a.db.Session(r.Context(), c.Value)
-				if err == nil && s.User.ID == uid {
+				if err == nil && s.LoginID == loginID {
+					// Links change after sessions are issued, so identity is re-resolved on every request.
 					s.Email = identity.Email
+					s.User.ID = base
+					if linked && baseName != "" {
+						s.User.Name = baseName
+					}
 					next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey{}, &s)))
 					return
 				}
@@ -188,10 +231,13 @@ func (a *App) withSession(next http.Handler) http.Handler {
 			}
 			key := store.RandomToken()
 			name, _, _ := strings.Cut(identity.Email, "@")
+			if linked && baseName != "" {
+				name = baseName
+			}
 			if len(name) > 80 {
 				name = name[:80]
 			}
-			s := store.Session{Email: identity.Email, User: store.User{ID: uid, Name: name}, CSRF: store.RandomToken(), ExpiresAt: time.Now().Add(7 * 24 * time.Hour)}
+			s := store.Session{LoginID: loginID, Email: identity.Email, User: store.User{ID: base, Name: name}, CSRF: store.RandomToken(), ExpiresAt: time.Now().Add(7 * 24 * time.Hour)}
 			if err := a.db.PutSession(r.Context(), key, s); err != nil {
 				a.fail(w, r, err)
 				return
@@ -203,6 +249,17 @@ func (a *App) withSession(next http.Handler) http.Handler {
 		if c, err := r.Cookie(a.cfg.cookieName()); err == nil && len(c.Value) <= 128 {
 			s, err := a.db.Session(r.Context(), c.Value)
 			if err == nil {
+				if s.LoginID != "" {
+					base, baseName, linked, rerr := a.resolveLogin(r.Context(), s.LoginID)
+					if rerr != nil {
+						a.fail(w, r, rerr)
+						return
+					}
+					s.User.ID = base
+					if linked && baseName != "" {
+						s.User.Name = baseName
+					}
+				}
 				r = r.WithContext(context.WithValue(r.Context(), sessionKey{}, &s))
 			} else if !errors.Is(err, store.ErrNotFound) {
 				a.fail(w, r, err)

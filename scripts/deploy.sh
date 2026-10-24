@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 source "$(dirname "$0")/common.sh"
+MAIL_SENDER=${MAIL_SENDER:-}
+mail_env=""
+if [[ -n "$MAIL_SENDER" ]]; then
+  [[ "$MAIL_SENDER" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$ ]] || { echo 'MAIL_SENDER must be an email address.' >&2; exit 1; }
+  mail_env=",MAIL_SENDER=$MAIL_SENDER,MAIL_SERVICE_ACCOUNT=$RUNTIME_SA"
+fi
 GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-flash}
 GEMINI_LOCATION=${GEMINI_LOCATION:-global}
 GEMINI_IMAGE_MODEL=${GEMINI_IMAGE_MODEL:-gemini-3-pro-image}
@@ -11,6 +17,7 @@ base_url=${DEPLOY_BASE_URL:-$service_url}
 api_service="${SERVICE}-api"
 api_url="https://${api_service}-${project_number}.${REGION}.run.app"
 if [[ "$base_url" != https://* || "$base_url" == *','* || "$base_url" == */ ]]; then echo 'DEPLOY_BASE_URL must be an HTTPS origin without a trailing slash.' >&2; exit 1; fi
+command -v jq >/dev/null && command -v curl >/dev/null || { echo 'jq and curl are required for make deploy.' >&2; exit 1; }
 [[ -f config.yaml ]] || { echo 'config.yaml is required.' >&2; exit 1; }
 go run ./cmd/iap-policy --validate config.yaml
 if ! gcloud artifacts repositories describe shiori-images --location="$REGION" --project="$PROJECT_ID" >/dev/null 2>&1; then
@@ -44,7 +51,7 @@ gcloud run deploy "$SERVICE" --image="$image" --project="$PROJECT_ID" --region="
   --service-account="$RUNTIME_SA" \
   --no-allow-unauthenticated --iap --port=8080 --cpu=1 --memory=2Gi --concurrency=40 --timeout=300 --no-cpu-throttling \
   --min=1 --max=3 \
-  --set-env-vars="APP_ENV=production,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,BASE_URL=$base_url,API_BASE_URL=$api_url,IAP_AUDIENCE=/projects/$project_number/locations/$REGION/services/$SERVICE,GEMINI_MODEL=$GEMINI_MODEL,GEMINI_LOCATION=$GEMINI_LOCATION,$image_env,$tasks_env" \
+  --set-env-vars="APP_ENV=production,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,BASE_URL=$base_url,API_BASE_URL=$api_url,IAP_AUDIENCE=/projects/$project_number/locations/$REGION/services/$SERVICE,GEMINI_MODEL=$GEMINI_MODEL,GEMINI_LOCATION=$GEMINI_LOCATION,$image_env,$tasks_env$mail_env" \
   --clear-secrets --quiet
 gcloud run services add-iam-policy-binding "$SERVICE" --project="$PROJECT_ID" --region="$REGION" \
   --member="serviceAccount:service-${project_number}@gcp-sa-iap.iam.gserviceaccount.com" \
@@ -52,9 +59,22 @@ gcloud run services add-iam-policy-binding "$SERVICE" --project="$PROJECT_ID" --
 current_policy=$(mktemp)
 desired_policy=$(mktemp)
 trap 'rm -f "$current_policy" "$desired_policy"' EXIT
-gcloud iap web get-iam-policy --project="$PROJECT_ID" --region="$REGION" --resource-type=cloud-run --service="$SERVICE" --format=json > "$current_policy"
+# Policy version 3 is required to read and write the conditional binding that holds linked accounts.
+iap_resource="https://iap.googleapis.com/v1/projects/$project_number/iap_web/cloud_run-$REGION/services/$SERVICE"
+iap_token=$(gcloud auth print-access-token)
+curl -fsS -X POST "$iap_resource:getIamPolicy" -H "Authorization: Bearer $iap_token" -H 'Content-Type: application/json' \
+  -d '{"options":{"requestedPolicyVersion":3}}' > "$current_policy"
 go run ./cmd/iap-policy config.yaml "$current_policy" "$desired_policy"
-gcloud iap web set-iam-policy "$desired_policy" --project="$PROJECT_ID" --region="$REGION" --resource-type=cloud-run --service="$SERVICE" --quiet
+if [[ -n "$MAIL_SENDER" ]]; then
+  # The runtime service account manages the linked-account binding at run time.
+  jq --arg member "serviceAccount:$RUNTIME_SA" '
+    .bindings = ((.bindings // []) as $b
+      | if any($b[]; .role == "roles/iap.admin" and .condition == null)
+        then ($b | map(if .role == "roles/iap.admin" and .condition == null then .members = ((.members // []) + [$member] | unique) else . end))
+        else $b + [{role: "roles/iap.admin", members: [$member]}] end)
+    | .version = 3' "$desired_policy" > "$desired_policy.tmp" && mv "$desired_policy.tmp" "$desired_policy"
+fi
+jq '{policy: .}' "$desired_policy" | curl -fsS -X POST "$iap_resource:setIamPolicy" -H "Authorization: Bearer $iap_token" -H 'Content-Type: application/json' -d @- >/dev/null
 printf '\nIAP URL: %s\n' "$base_url"
 
 # Query tokens must not be retained in the default request log bucket.

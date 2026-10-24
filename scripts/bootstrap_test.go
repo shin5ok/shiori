@@ -34,7 +34,7 @@ func TestBootstrapSkipsConfiguredResources(t *testing.T) {
 	fakeGcloud := `#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$GCLOUD_LOG"
 case "$1 $2 $3 $4" in
-  'services list --enabled '*) printf '%s\n' run.googleapis.com firestore.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com iam.googleapis.com aiplatform.googleapis.com iap.googleapis.com cloudtasks.googleapis.com ;;
+  'services list --enabled '*) printf '%s\n' run.googleapis.com firestore.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com iam.googleapis.com aiplatform.googleapis.com iap.googleapis.com cloudtasks.googleapis.com iamcredentials.googleapis.com gmail.googleapis.com ;;
   'projects get-iam-policy '*) printf '%s\n' '{"bindings":[{"role":"roles/datastore.user","members":["serviceAccount:shiori-runtime@test-project.iam.gserviceaccount.com"]},{"role":"roles/aiplatform.user","members":["serviceAccount:shiori-runtime@test-project.iam.gserviceaccount.com"]},{"role":"roles/cloudtasks.enqueuer","members":["serviceAccount:shiori-runtime@test-project.iam.gserviceaccount.com"]},{"role":"roles/run.builder","members":["serviceAccount:shiori-build@test-project.iam.gserviceaccount.com"]}]}' ;;
   'iam service-accounts get-iam-policy '*) printf '%s\n' '{"bindings":[{"role":"roles/iam.serviceAccountUser","members":["serviceAccount:shiori-runtime@test-project.iam.gserviceaccount.com"]}]}' ;;
   'secrets get-iam-policy '*) printf '%s\n' '{"bindings":[{"role":"roles/secretmanager.secretAccessor","members":["serviceAccount:shiori-runtime@test-project.iam.gserviceaccount.com"]}]}' ;;

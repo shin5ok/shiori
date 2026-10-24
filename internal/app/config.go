@@ -23,11 +23,12 @@ type Config struct {
 	GeminiModel, GeminiLocation                     string
 	GeminiImageModel, GeminiImageLocation           string
 	IAPAudience                                     string
+	MailSender, MailServiceAccount                  string
 	IAPAllowlist                                    iap.Allowlist
 }
 
 func LoadConfig() (Config, error) {
-	c := Config{Project: os.Getenv("GOOGLE_CLOUD_PROJECT"), Port: env("PORT", "8080"), BaseURL: env("BASE_URL", "http://localhost:8080"), Env: env("APP_ENV", "production"), GoogleClientID: os.Getenv("GOOGLE_CLIENT_ID"), GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"), GeminiModel: env("GEMINI_MODEL", "gemini-3.8-flash"), GeminiLocation: env("GEMINI_LOCATION", "global"), IAPAudience: os.Getenv("IAP_AUDIENCE")}
+	c := Config{Project: os.Getenv("GOOGLE_CLOUD_PROJECT"), Port: env("PORT", "8080"), BaseURL: env("BASE_URL", "http://localhost:8080"), Env: env("APP_ENV", "production"), GoogleClientID: os.Getenv("GOOGLE_CLIENT_ID"), GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"), GeminiModel: env("GEMINI_MODEL", "gemini-3.8-flash"), GeminiLocation: env("GEMINI_LOCATION", "global"), IAPAudience: os.Getenv("IAP_AUDIENCE"), MailSender: os.Getenv("MAIL_SENDER"), MailServiceAccount: os.Getenv("MAIL_SERVICE_ACCOUNT")}
 	c.GeminiImageModel = env("GEMINI_IMAGE_MODEL", "gemini-3-pro-image")
 	c.GeminiImageLocation = env("GEMINI_IMAGE_LOCATION", "global")
 	if value := os.Getenv("API_ONLY"); value != "" && value != "true" && value != "false" {
@@ -118,6 +119,9 @@ func (c Config) Validate() error {
 	}
 	if (c.GoogleClientID == "") != (c.GoogleClientSecret == "") {
 		return errors.New("set both Google OAuth credentials")
+	}
+	if c.Env == "production" && (c.MailSender == "") != (c.MailServiceAccount == "") {
+		return errors.New("set both MAIL_SENDER and MAIL_SERVICE_ACCOUNT")
 	}
 	if c.IAPAudience != "" && !iapAudiencePattern.MatchString(c.IAPAudience) {
 		return errors.New("IAP_AUDIENCE must identify this Cloud Run service")

@@ -15,6 +15,8 @@ import (
 	"golang.org/x/oauth2/google"
 	"my-bookmark/internal/app"
 	"my-bookmark/internal/content"
+	"my-bookmark/internal/iap"
+	"my-bookmark/internal/mail"
 	"my-bookmark/internal/store"
 )
 
@@ -34,6 +36,38 @@ func checkChromium(ctx context.Context, cfg app.Config, check func(context.Conte
 	}
 	return nil
 }
+
+// configureLinking enables account linking when mail and IAP access can be managed.
+func configureLinking(ctx context.Context, cfg app.Config, application *app.App) error {
+	if cfg.Env == "development" {
+		application.SetLinking(mail.Log{}, noAccess{})
+		return nil
+	}
+	if cfg.MailSender == "" || cfg.IAPAudience == "" {
+		slog.Warn("account linking disabled: MAIL_SENDER and IAP_AUDIENCE are required")
+		return nil
+	}
+	sender, err := mail.NewGmail(ctx, cfg.MailServiceAccount, cfg.MailSender)
+	if err != nil {
+		return fmt.Errorf("configure mail: %w", err)
+	}
+	client, err := google.DefaultClient(ctx, "https://www.googleapis.com/auth/cloud-platform")
+	if err != nil {
+		return err
+	}
+	grants, err := iap.NewGrants(client, cfg.IAPAudience)
+	if err != nil {
+		return err
+	}
+	application.SetLinking(sender, grants)
+	return nil
+}
+
+// noAccess is used locally, where there is no IAP policy to edit.
+type noAccess struct{}
+
+func (noAccess) Grant(context.Context, string) error  { return nil }
+func (noAccess) Revoke(context.Context, string) error { return nil }
 
 func run() error {
 	cfg, err := app.LoadConfig()
@@ -65,6 +99,9 @@ func run() error {
 	} else {
 		application, err := app.New(cfg, database, summarizer)
 		if err != nil {
+			return err
+		}
+		if err := configureLinking(ctx, cfg, application); err != nil {
 			return err
 		}
 		handler = application.Handler()

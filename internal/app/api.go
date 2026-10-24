@@ -144,9 +144,16 @@ func (a *App) saveAPI(w http.ResponseWriter, r *http.Request) {
 		a.apiTokenError(w, r, "token_expired", "トークンの有効期限が切れています。ログインしてAPIトークンを再発行してください。")
 		return
 	}
-	if a.cfg.Env == "production" && !a.cfg.IAPAllowlist.Allows(token.Email) {
-		a.apiError(w, r, 403, "account is not allowed")
-		return
+	if a.cfg.Env == "production" {
+		allowed, err := a.emailAllowed(r.Context(), token.User.ID, token.Email)
+		if err != nil {
+			a.apiError(w, r, 503, "account lookup failed")
+			return
+		}
+		if !allowed {
+			a.apiError(w, r, 403, "account is not allowed")
+			return
+		}
 	}
 	var input struct {
 		URL     string   `json:"url"`
@@ -223,9 +230,16 @@ func (a *App) issueToken(w http.ResponseWriter, r *http.Request) {
 		a.problem(w, r, 400, "ユーザー情報を確認できません。")
 		return
 	}
-	if a.cfg.Env == "production" && !a.cfg.IAPAllowlist.Allows(s.Email) {
-		a.problem(w, r, 403, "このアカウントにはアクセス権がありません。")
-		return
+	if a.cfg.Env == "production" {
+		allowed, err := a.emailAllowed(r.Context(), s.User.ID, s.Email)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		if !allowed {
+			a.problem(w, r, 403, "このアカウントにはアクセス権がありません。")
+			return
+		}
 	}
 	raw := s.User.ID + "." + store.RandomToken()
 	token := store.APIToken{User: s.User, Email: s.Email, Hash: store.Hash(raw), ExpiresAt: time.Now().Add(90 * 24 * time.Hour)}

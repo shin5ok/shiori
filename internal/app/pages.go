@@ -15,6 +15,8 @@ import (
 
 type Page struct {
 	TokenSettings, TokenActive bool
+	AccountSettings            bool
+	Accounts                   *AccountsPage
 	APIEndpoint, IssuedToken   string
 	TokenExpires               time.Time
 	Title, Mode, Next, Error   string

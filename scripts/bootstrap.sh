@@ -33,6 +33,14 @@ if ! has_binding "$tasks_policy" roles/iam.serviceAccountUser "serviceAccount:$R
   gcloud iam service-accounts add-iam-policy-binding "$TASKS_SA" --project="$PROJECT_ID" \
     --member="serviceAccount:$RUNTIME_SA" --role=roles/iam.serviceAccountUser --quiet >/dev/null
 fi
+# Account-linking mail is signed keylessly by the runtime identity (domain-wide delegation).
+if [[ -n "${MAIL_SENDER:-}" ]]; then
+  runtime_policy=$(gcloud iam service-accounts get-iam-policy "$RUNTIME_SA" --project="$PROJECT_ID" --format=json)
+  if ! has_binding "$runtime_policy" roles/iam.serviceAccountTokenCreator "serviceAccount:$RUNTIME_SA"; then
+    gcloud iam service-accounts add-iam-policy-binding "$RUNTIME_SA" --project="$PROJECT_ID" \
+      --member="serviceAccount:$RUNTIME_SA" --role=roles/iam.serviceAccountTokenCreator --quiet >/dev/null
+  fi
+fi
 for secret in "$OAUTH_SECRET"; do
   if ! gcloud secrets describe "$secret" --project="$PROJECT_ID" >/dev/null 2>&1; then
     gcloud secrets create "$secret" --replication-policy=automatic --project="$PROJECT_ID"

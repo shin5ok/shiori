@@ -1,0 +1,29 @@
+{{define "account-settings"}}
+{{with .Accounts}}
+<section class="api-settings">
+{{if .Confirm}}
+<div class="page-heading"><div><h1>アカウントの名寄せ</h1><p class="intro">このアカウントを、ベースアカウントと同じアカウントとして使います。</p></div></div>
+<p>{{if .BaseName}}「{{.BaseName}}」{{else}}ベースアカウント{{end}}に、このアカウント（{{.Confirm.Email}}）を名寄せしますか？</p>
+<ul>
+<li>名寄せ後は、どちらのアカウントでログインしても、ベースアカウントのブックマークを操作します。</li>
+<li>このアカウントで以前に保存したブックマークは、名寄せ後は表示されなくなります。</li>
+<li>心当たりがない場合は、何もせずにこの画面を閉じてください。</li>
+</ul>
+<form action="/accounts/link" method="post" class="bookmark-form"><input type="hidden" name="csrf" value="{{$.Session.CSRF}}"><input type="hidden" name="token" value="{{.Token}}"><button type="submit" class="button">名寄せする</button></form>
+{{else}}
+<div class="page-heading"><div><h1>アカウントの名寄せ</h1><p class="intro">複数のGoogleアカウントを、ひとつのアカウントとして使えます。</p></div></div>
+{{if .Notice}}<p role="status">{{.Notice}}</p>{{end}}
+{{if .NotBase}}<p>名寄せの追加・解除は、ベースアカウントでログインした設定画面から行えます。</p>
+{{else}}
+<h2>名寄せ済みのアカウント（{{len .Linked}} / {{.Max}}）</h2>
+{{range .Linked}}<form action="/settings/accounts/unlink" method="post" class="delete-form"><input type="hidden" name="csrf" value="{{$.Session.CSRF}}"><input type="hidden" name="login" value="{{.LoginID}}"><span>{{.Email}}</span> <button type="submit" class="danger-button">解除</button></form>{{else}}<p class="muted">名寄せ済みのアカウントはありません。</p>{{end}}
+{{if .Pending}}<h2>確認待ち</h2>{{range .Pending}}<p>{{.Email}} <span class="small-note">（{{date .ExpiresAt}}まで有効）</span></p>{{end}}{{end}}
+<h2>アカウントを追加</h2>
+{{if .Enabled}}<form action="/settings/accounts/invite" method="post" class="bookmark-form"><input type="hidden" name="csrf" value="{{$.Session.CSRF}}"><label>追加するGoogleアカウントのメールアドレス<input type="email" name="email" required maxlength="254" autocomplete="off"></label><button type="submit" class="button">確認メールを送る</button></form>
+<p class="small-note">送信先にメールが届き、リンクを開いて承認すると名寄せが完了します。リンクの有効期限は24時間です。アクセス権の反映に数分かかることがあります。最大{{.Max}}個まで追加できます。</p>
+{{else}}<p>名寄せ機能は、管理者がメール送信を設定すると利用できます。</p>{{end}}
+{{end}}
+{{end}}
+</section>
+{{end}}
+{{end}}

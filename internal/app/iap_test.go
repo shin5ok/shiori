@@ -106,3 +106,21 @@ func TestIAPModeRejectsCookieWithoutSignedAssertion(t *testing.T) {
 		t.Fatalf("status=%d", w.Code)
 	}
 }
+
+func TestLoadConfigDevelopmentAllowsMailSenderAlone(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("domains: [data-cloud.jp]\ntags: [技術, AI]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("GOOGLE_CLOUD_PROJECT", "demo-bookmark")
+	t.Setenv("BASE_URL", "http://localhost:8080")
+	t.Setenv("FIRESTORE_EMULATOR_HOST", "127.0.0.1:8085")
+	t.Setenv("K_SERVICE", "")
+	t.Setenv("CONFIG_FILE", path)
+	t.Setenv("MAIL_SENDER", "noreply@data-cloud.jp")
+	t.Setenv("MAIL_SERVICE_ACCOUNT", "")
+	if _, err := LoadConfig(); err != nil {
+		t.Fatalf("development config rejected: %v", err)
+	}
+}

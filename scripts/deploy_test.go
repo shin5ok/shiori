@@ -36,6 +36,10 @@ printf '%s\n' "$*" >> "$GCLOUD_LOG"
 if [[ "$1 $2" == 'projects describe' ]]; then echo 123456789; fi
 if [[ "$1 $2 $3" == 'artifacts repositories describe' && "${MISSING_REPO:-}" == 1 ]]; then exit 1; fi
 `
+	curl := "#!/usr/bin/env bash\nprintf 'curl %s\\n' \"$*\" >> \"$GCLOUD_LOG\"\ncat >/dev/null <&0 2>/dev/null || true\nprintf '{\"bindings\":[]}'\n"
+	if err := os.WriteFile(filepath.Join(root, "bin", "curl"), []byte(curl), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(root, "bin", "gcloud"), []byte(fake), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +86,7 @@ if [[ "$1 $2 $3" == 'artifacts repositories describe' && "${MISSING_REPO:-}" == 
 	if !strings.Contains(calls[deploy:], "API_BASE_URL=https://shiori-api-") {
 		t.Fatalf("missing API endpoint: %s", calls)
 	}
-	if !strings.Contains(calls[deploy:], "--no-allow-unauthenticated --iap") || !strings.Contains(calls, "iap web set-iam-policy") {
+	if !strings.Contains(calls[deploy:], "--no-allow-unauthenticated --iap") || !strings.Contains(calls, ":setIamPolicy") || !strings.Contains(calls, "requestedPolicyVersion") {
 		t.Fatalf("deploy must enable and configure IAP: %s", calls)
 	}
 }
@@ -115,6 +119,10 @@ printf '%s\n' "$*" >> "$GCLOUD_LOG"
 if [[ "$1 $2" == 'projects describe' ]]; then echo 123456789; fi
 if [[ "$1 $2 $3" == 'artifacts repositories describe' ]]; then exit 1; fi
 `
+	curl := "#!/usr/bin/env bash\nprintf 'curl %s\\n' \"$*\" >> \"$GCLOUD_LOG\"\ncat >/dev/null <&0 2>/dev/null || true\nprintf '{\"bindings\":[]}'\n"
+	if err := os.WriteFile(filepath.Join(root, "bin", "curl"), []byte(curl), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(root, "bin", "gcloud"), []byte(fake), 0o755); err != nil {
 		t.Fatal(err)
 	}

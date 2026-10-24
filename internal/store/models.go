@@ -97,6 +97,9 @@ type APIToken struct {
 }
 
 type Session struct {
+	// LoginID is the hashed identity that authenticated; User.ID is the base
+	// account it resolves to and differs from LoginID for linked accounts.
+	LoginID   string    `firestore:"login_id"`
 	Email     string    `firestore:"email"`
 	User      User      `firestore:"user"`
 	CSRF      string    `firestore:"csrf"`

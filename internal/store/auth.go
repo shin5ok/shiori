@@ -8,7 +8,10 @@ import (
 
 func (s *Store) PutSession(ctx context.Context, token string, session Session) error {
 	batch := s.client.Batch()
-	batch.Set(s.client.Collection("users").Doc(session.User.ID), session.User)
+	// A linked login must not overwrite the base account's profile.
+	if session.LoginID == "" || session.LoginID == session.User.ID {
+		batch.Set(s.client.Collection("users").Doc(session.User.ID), session.User)
+	}
 	batch.Set(s.client.Collection("sessions").Doc(Hash(token)), session)
 	_, err := batch.Commit(ctx)
 	return err
