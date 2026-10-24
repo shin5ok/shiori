@@ -132,3 +132,37 @@ func TestPendingInvitesCountAndExpire(t *testing.T) {
 		t.Fatalf("reap: %v %v", emails, err)
 	}
 }
+
+func TestTagsAndListByTag(t *testing.T) {
+	s, ctx := ratingTestStore(t)
+	u, v := User{ID: "tag-user"}, User{ID: "tag-other"}
+	save := func(u User, path string, tags ...string) {
+		t.Helper()
+		if _, err := s.Save(ctx, u, "https://example.com/"+path, "", tags); err != nil {
+			t.Fatal(err)
+		}
+	}
+	save(u, "a", "技術", "Go")
+	save(u, "b", "技術")
+	save(u, "c", "旅行")
+	save(v, "d", "技術", "他人")
+	tags, err := s.Tags(ctx, u.ID, 10)
+	if err != nil || len(tags) != 3 || tags[0].Name != "技術" || tags[0].Count != 2 {
+		t.Fatalf("tags: %#v %v", tags, err)
+	}
+	if limited, _ := s.Tags(ctx, u.ID, 1); len(limited) != 1 {
+		t.Fatalf("limit: %#v", limited)
+	}
+	entries, _, err := s.ListByTag(ctx, "mine", u.ID, "技術", "")
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("by tag: %d %v", len(entries), err)
+	}
+	for _, e := range entries {
+		if e.Bookmark.UserID != u.ID {
+			t.Fatalf("another user's bookmark listed: %#v", e.Bookmark)
+		}
+	}
+	if _, _, err = s.ListByTag(ctx, "new", u.ID, "技術", ""); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("public feed tag filter: %v", err)
+	}
+}

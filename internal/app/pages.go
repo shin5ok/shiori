@@ -16,6 +16,8 @@ import (
 type Page struct {
 	TokenSettings, TokenActive bool
 	AccountSettings            bool
+	TagList                    []store.TagCount
+	Tag, Return                string
 	Accounts                   *AccountsPage
 	APIEndpoint, IssuedToken   string
 	TokenExpires               time.Time
@@ -82,23 +84,49 @@ func (a *App) feed(w http.ResponseWriter, r *http.Request) {
 		a.problem(w, r, 400, "ページの指定が正しくありません。")
 		return
 	}
-	entries, next, err := a.db.List(r.Context(), mode, uid, cursor)
+	tag := strings.TrimSpace(r.URL.Query().Get("tag"))
+	if tag != "" {
+		if mode != "mine" && mode != "unread" || utf8.RuneCountInString(tag) > 24 || strings.ContainsAny(tag, ",\r\n") {
+			a.problem(w, r, 400, "タグの指定が正しくありません。")
+			return
+		}
+		title = "タグ「" + tag + "」のブックマーク"
+	}
+	var entries []store.Entry
+	var next string
+	var err error
+	if tag != "" {
+		entries, next, err = a.db.ListByTag(r.Context(), mode, uid, tag, cursor)
+	} else {
+		entries, next, err = a.db.List(r.Context(), mode, uid, cursor)
+	}
 	if err != nil {
 		a.fail(w, r, err)
 		return
 	}
+	var tagList []store.TagCount
+	if uid != "" {
+		if tagList, err = a.db.Tags(r.Context(), uid, 40); err != nil {
+			a.fail(w, r, err)
+			return
+		}
+	}
 	nextURL := ""
 	if next != "" {
 		if mode == "mine" || mode == "unread" {
-			nextURL = "/?cursor=" + next
+			v := url.Values{"cursor": {next}}
 			if mode == "unread" {
-				nextURL += "&filter=unread"
+				v.Set("filter", "unread")
 			}
+			if tag != "" {
+				v.Set("tag", tag)
+			}
+			nextURL = "/?" + v.Encode()
 		} else {
 			nextURL = "/" + mode + "?cursor=" + next
 		}
 	}
-	a.render(w, r, 200, Page{Title: title, Mode: mode, Entries: entries, Next: nextURL})
+	a.render(w, r, 200, Page{Title: title, Mode: mode, Entries: entries, Next: nextURL, TagList: tagList, Tag: tag, Return: r.URL.RequestURI()})
 }
 func (a *App) detail(w http.ResponseWriter, r *http.Request) {
 	id, ok := a.id(w, r)
@@ -174,5 +202,13 @@ func (a *App) remove(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, "/mine", http.StatusSeeOther)
+	http.Redirect(w, r, returnPath(r.PostFormValue("return")), http.StatusSeeOther)
+}
+
+// returnPath accepts only same-site paths so a form cannot redirect elsewhere.
+func returnPath(v string) string {
+	if v == "" || len(v) > 300 || !strings.HasPrefix(v, "/") || strings.HasPrefix(v, "//") || strings.ContainsAny(v, "\\\r\n") {
+		return "/mine"
+	}
+	return v
 }

@@ -32,6 +32,8 @@ type Database interface {
 	DeleteAPIToken(context.Context, string) error
 	List(context.Context, string, string, string) ([]store.Entry, string, error)
 	Get(context.Context, string) (store.Article, error)
+	ListByTag(context.Context, string, string, string, string) ([]store.Entry, string, error)
+	Tags(context.Context, string, int) ([]store.TagCount, error)
 	Own(context.Context, string, string) (*store.Bookmark, error)
 	Save(context.Context, store.User, string, string, []string) (store.Article, error)
 	Delete(context.Context, string, string) error

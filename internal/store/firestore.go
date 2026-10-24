@@ -211,10 +211,26 @@ func (s *Store) Delete(ctx context.Context, uid, aid string) error {
 const PageSize = 20
 
 func (s *Store) List(ctx context.Context, mode, uid, cursor string) ([]Entry, string, error) {
+	return s.list(ctx, mode, uid, "", cursor)
+}
+
+// ListByTag lists the user's own bookmarks that carry the tag.
+func (s *Store) ListByTag(ctx context.Context, mode, uid, tag, cursor string) ([]Entry, string, error) {
+	if mode != "mine" && mode != "unread" {
+		return nil, "", ErrNotFound
+	}
+	return s.list(ctx, mode, uid, tag, cursor)
+}
+
+func (s *Store) list(ctx context.Context, mode, uid, tag, cursor string) ([]Entry, string, error) {
 	mine := mode == "mine" || mode == "unread"
 	var q firestore.Query
 	if mine {
-		q = s.client.Collection("bookmarks").Where("user_id", "==", uid).OrderBy("created_at", firestore.Desc).OrderBy(firestore.DocumentID, firestore.Desc)
+		base := s.client.Collection("bookmarks").Where("user_id", "==", uid)
+		if tag != "" {
+			base = base.Where("tags", "array-contains", tag)
+		}
+		q = base.OrderBy("created_at", firestore.Desc).OrderBy(firestore.DocumentID, firestore.Desc)
 	} else {
 		q = s.client.Collection("articles").Where("active", "==", true)
 		if mode == "popular" {

@@ -30,6 +30,13 @@ create_index articles active count
 create_index articles active rating_total
 create_index bookmarks user_id created_at
 create_index bookmarks article_id created_at
+# Per-user tag lists: user_id + tags (array-contains) + created_at + document ID.
+if ! jq -e 'any(.[]; (.name // "" | contains("/collectionGroups/bookmarks/")) and any(.fields[]?; .fieldPath == "tags" and .arrayConfig == "CONTAINS") and .state != "DELETING")' <<<"$indexes_json" >/dev/null; then
+  output=$(gcloud firestore indexes composite create --project="$PROJECT_ID" --collection-group=bookmarks --query-scope=collection \
+    --field-config="field-path=user_id,order=ascending" --field-config="field-path=tags,array-config=contains" \
+    --field-config="field-path=created_at,order=descending" --field-config="field-path=__name__,order=descending" --quiet 2>&1) \
+    || [[ "$output" == *ALREADY_EXISTS* || "$output" == *'already exists'* ]] || { printf '%s\n' "$output" >&2; exit 1; }
+fi
 create_index summary_jobs status queued_at ascending
 create_index infographic_jobs status queued_at ascending
 # Binary image data is read by document ID and must not be indexed.

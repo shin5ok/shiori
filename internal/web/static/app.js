@@ -321,7 +321,19 @@
   document.querySelectorAll('.summary[data-status="queued"], .summary[data-status="processing"]').forEach(el => poll(el.closest('[data-article]').dataset.article));
   document.querySelectorAll('.infographic-button').forEach(button => button.addEventListener('click', () => generateInfographic(button.dataset.id)));
   document.querySelectorAll('.infographic-panel[data-infographic-status="queued"], .infographic-panel[data-infographic-status="processing"]').forEach(el => pollInfographic(el.closest('[data-article]').dataset.article));
-  document.querySelectorAll('.delete-form').forEach(form => form.addEventListener('submit', event => {
+  const feed = document.querySelector('.feed[data-view]');
+  const toggles = document.querySelectorAll('.view-toggle [data-view]');
+  const setView = (view, remember) => {
+    if (!feed) return;
+    feed.dataset.view = view;
+    toggles.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === view)));
+    if (remember) { try { localStorage.setItem('shiori-view', view); } catch (e) { /* storage may be blocked */ } }
+  };
+  toggles.forEach(button => button.addEventListener('click', () => setView(button.dataset.view, true)));
+  let savedView = 'compact';
+  try { if (localStorage.getItem('shiori-view') === 'tldr') savedView = 'tldr'; } catch (e) { /* storage may be blocked */ }
+  setView(savedView, false);
+  document.querySelectorAll('.delete-form, .quick-delete').forEach(form => form.addEventListener('submit', event => {
     if (!window.confirm('このブックマークを削除しますか？')) event.preventDefault();
   }));
 })();

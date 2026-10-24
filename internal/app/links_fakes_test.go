@@ -32,3 +32,23 @@ func (d previewDB) Link(context.Context, string) (store.AccountLink, error) {
 }
 func (d previewDB) HasLinkedEmail(context.Context, string, string) (bool, error) { return false, nil }
 func (d previewDB) HasPendingInvite(context.Context, string) (bool, error)       { return false, nil }
+func (d *authDB) Tags(context.Context, string, int) ([]store.TagCount, error)    { return nil, nil }
+func (d *authDB) ListByTag(context.Context, string, string, string, string) ([]store.Entry, string, error) {
+	return nil, "", nil
+}
+func (d *apiTestDB) Tags(context.Context, string, int) ([]store.TagCount, error) { return nil, nil }
+func (d *apiTestDB) ListByTag(context.Context, string, string, string, string) ([]store.Entry, string, error) {
+	return nil, "", nil
+}
+func (d *iapTestDB) Tags(context.Context, string, int) ([]store.TagCount, error) { return nil, nil }
+func (d *iapTestDB) ListByTag(context.Context, string, string, string, string) ([]store.Entry, string, error) {
+	return nil, "", nil
+}
+func (d testDB) Tags(context.Context, string, int) ([]store.TagCount, error) { return nil, nil }
+func (d testDB) ListByTag(context.Context, string, string, string, string) ([]store.Entry, string, error) {
+	return nil, "", nil
+}
+func (d previewDB) Tags(context.Context, string, int) ([]store.TagCount, error) { return nil, nil }
+func (d previewDB) ListByTag(context.Context, string, string, string, string) ([]store.Entry, string, error) {
+	return nil, "", nil
+}
