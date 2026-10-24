@@ -21,7 +21,7 @@ func (d *tagViewDB) Tags(context.Context, string, int) ([]store.TagCount, error)
 }
 func (d *tagViewDB) ListByTag(_ context.Context, _, _, tag, _ string) ([]store.Entry, string, error) {
 	d.tag = tag
-	return []store.Entry{{Article: store.Article{ID: strings.Repeat("a", 64), Title: "記事", Status: "ready"}, Bookmark: &store.Bookmark{Tags: []string{tag}}}}, strings.Repeat("b", 64), nil
+	return []store.Entry{{Article: store.Article{ID: strings.Repeat("a", 64), Title: "記事", Status: "ready", TLDR: []string{"要点"}}, Bookmark: &store.Bookmark{Tags: []string{tag}}}}, strings.Repeat("b", 64), nil
 }
 func (d *tagViewDB) Delete(_ context.Context, _, id string) error { d.deleted = id; return nil }
 
@@ -39,7 +39,7 @@ func TestTagSidebarFilterAndViewToggle(t *testing.T) {
 	}
 	for _, want := range []string{
 		`class="tag-nav"`,
-		`href="/?tag=%e6%8a%80%e8%a1%93" aria-current="page"`,
+		`href="/" aria-current="page" title=`,
 		`href="/?tag=%e6%97%85%e8%a1%8c"`,
 		`href="/?cursor=` + strings.Repeat("b", 64) + `&amp;tag=%E6%8A%80%E8%A1%93"`,
 		`data-view="compact"`,
@@ -48,6 +48,25 @@ func TestTagSidebarFilterAndViewToggle(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %s", want)
+		}
+	}
+}
+
+func TestSelectedTagLinksBackAndUnreadFilterIsKept(t *testing.T) {
+	a := testApp(t)
+	a.db = &tagViewDB{}
+	r := httptest.NewRequest(http.MethodGet, "/?filter=unread&tag="+url.QueryEscape("技術"), nil)
+	r.AddCookie(&http.Cookie{Name: "shiori_session", Value: "token"})
+	w := httptest.NewRecorder()
+	a.Handler().ServeHTTP(w, r)
+	body := w.Body.String()
+	for _, want := range []string{
+		`href="/?filter=unread" aria-current="page"`,
+		`href="/?filter=unread&amp;tag=%e6%97%85%e8%a1%8c"`,
+		`class="open-detail" href="/articles/` + strings.Repeat("a", 64) + `"`,
+	} {
+		if w.Code != http.StatusOK || !strings.Contains(body, want) {
+			t.Errorf("status=%d missing %s", w.Code, want)
 		}
 	}
 }

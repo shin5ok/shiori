@@ -18,6 +18,7 @@ type Page struct {
 	AccountSettings            bool
 	TagList                    []store.TagCount
 	Tag, Return                string
+	TagBase, ClearTag          string
 	Accounts                   *AccountsPage
 	APIEndpoint, IssuedToken   string
 	TokenExpires               time.Time
@@ -111,6 +112,11 @@ func (a *App) feed(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Tag links keep the unread filter; the selected tag links back to the unfiltered list.
+	tagBase, clearTag := "/?", "/"
+	if mode == "unread" {
+		tagBase, clearTag = "/?filter=unread&", "/?filter=unread"
+	}
 	nextURL := ""
 	if next != "" {
 		if mode == "mine" || mode == "unread" {
@@ -126,7 +132,7 @@ func (a *App) feed(w http.ResponseWriter, r *http.Request) {
 			nextURL = "/" + mode + "?cursor=" + next
 		}
 	}
-	a.render(w, r, 200, Page{Title: title, Mode: mode, Entries: entries, Next: nextURL, TagList: tagList, Tag: tag, Return: r.URL.RequestURI()})
+	a.render(w, r, 200, Page{Title: title, Mode: mode, Entries: entries, Next: nextURL, TagList: tagList, Tag: tag, Return: r.URL.RequestURI(), TagBase: tagBase, ClearTag: clearTag})
 }
 func (a *App) detail(w http.ResponseWriter, r *http.Request) {
 	id, ok := a.id(w, r)

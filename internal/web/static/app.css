@@ -83,7 +83,14 @@
 .view-toggle button { border: 0; border-radius: 0; min-height: 44px; padding: 8px 16px; font-size: 13px; color: var(--muted); }
 .view-toggle button + button { border-left: 1px solid var(--line); }
 .view-toggle button[aria-pressed="true"] { background: var(--blue); color: #fff; font-weight: 600; }
-.feed[data-view="compact"] .bookmark > :not(.article-meta):not(.article-title):not(.article-footer) { display: none; }
+.feed[data-view="compact"] .bookmark:not(.is-open) > :not(.article-meta):not(.article-title):not(.article-footer) { display: none; }
+.feed[data-view="compact"] .bookmark.is-open > :not(.article-meta):not(.article-title):not(.article-footer):not(.tldr):not(.open-detail) { display: none; }
+.open-detail { display: none; }
+.feed[data-view="compact"] .bookmark.is-open > .open-detail { display: inline-flex; align-items: center; min-height: 44px; margin: 4px 0 8px; font-size: 13px; color: var(--blue); }
+.feed[data-view="compact"] .bookmark:has(.tldr) .article-title a { cursor: pointer; }
+.feed[data-view="compact"] .bookmark:has(.tldr) .article-title a::after { content: " ▾"; color: var(--muted); font-size: .8em; }
+.feed[data-view="compact"] .bookmark.is-open .article-title a::after { content: " ▴"; }
+.feed[data-view="compact"] .bookmark.is-open .article-title { margin-bottom: 10px; }
 .feed[data-view="compact"] .bookmark { padding-bottom: 12px; }
 .feed[data-view="compact"] .article-title { margin-bottom: 8px; }
 .quick-delete { margin: 0; }

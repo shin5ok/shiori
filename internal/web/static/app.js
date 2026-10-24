@@ -225,9 +225,18 @@
   document.querySelectorAll('.article-title a').forEach(title => {
     title.addEventListener('click', event => {
       const el = title.closest('.bookmark');
-      if (!el.classList.contains('is-understood')) return;
+      // In the title-only list, the title opens the TL;DR in place instead of leaving the page.
+      const inline = document.querySelector('.feed')?.dataset.view === 'compact' && el.querySelector('.tldr');
+      if (!el.classList.contains('is-understood')) {
+        if (!inline) return;
+        event.preventDefault();
+        el.classList.toggle('is-open');
+        title.setAttribute('aria-expanded', String(el.classList.contains('is-open')));
+        return;
+      }
       event.preventDefault();
       collapseBookmark(el, !el.classList.contains('is-collapsed'));
+      if (inline) el.classList.toggle('is-open', !el.classList.contains('is-collapsed'));
     });
     title.addEventListener('keydown', event => {
       if (event.key === ' ' && title.closest('.bookmark').classList.contains('is-understood')) {
@@ -327,6 +336,11 @@
     if (!feed) return;
     feed.dataset.view = view;
     toggles.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === view)));
+    feed.querySelectorAll('.bookmark:not(.is-understood)').forEach(card => {
+      const title = card.querySelector('.article-title a');
+      if (view === 'compact' && card.querySelector('.tldr')) title.setAttribute('aria-expanded', String(card.classList.contains('is-open')));
+      else title.removeAttribute('aria-expanded');
+    });
     if (remember) { try { localStorage.setItem('shiori-view', view); } catch (e) { /* storage may be blocked */ } }
   };
   toggles.forEach(button => button.addEventListener('click', () => setView(button.dataset.view, true)));
