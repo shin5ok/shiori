@@ -196,7 +196,7 @@ func (a *App) withSession(next http.Handler) http.Handler {
 				return
 			}
 			loginID := store.Hash("https://accounts.google.com|" + identity.Subject)
-			base, baseName, linked, err := a.resolveLogin(r.Context(), loginID)
+			base, _, linked, err := a.resolveLogin(r.Context(), loginID)
 			if err != nil {
 				a.fail(w, r, err)
 				return
@@ -221,9 +221,6 @@ func (a *App) withSession(next http.Handler) http.Handler {
 					// Links change after sessions are issued, so identity is re-resolved on every request.
 					s.Email = identity.Email
 					s.User.ID = base
-					if linked && baseName != "" {
-						s.User.Name = baseName
-					}
 					next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey{}, &s)))
 					return
 				}
@@ -234,9 +231,6 @@ func (a *App) withSession(next http.Handler) http.Handler {
 			}
 			key := store.RandomToken()
 			name, _, _ := strings.Cut(identity.Email, "@")
-			if linked && baseName != "" {
-				name = baseName
-			}
 			if len(name) > 80 {
 				name = name[:80]
 			}
@@ -253,15 +247,12 @@ func (a *App) withSession(next http.Handler) http.Handler {
 			s, err := a.db.Session(r.Context(), c.Value)
 			if err == nil {
 				if s.LoginID != "" {
-					base, baseName, linked, rerr := a.resolveLogin(r.Context(), s.LoginID)
+					base, _, _, rerr := a.resolveLogin(r.Context(), s.LoginID)
 					if rerr != nil {
 						a.fail(w, r, rerr)
 						return
 					}
 					s.User.ID = base
-					if linked && baseName != "" {
-						s.User.Name = baseName
-					}
 				}
 				r = r.WithContext(context.WithValue(r.Context(), sessionKey{}, &s))
 			} else if !errors.Is(err, store.ErrNotFound) {

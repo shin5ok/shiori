@@ -115,3 +115,7 @@
 .account-popup { position: absolute; right: 0; top: 100%; z-index: 15; min-width: 160px; padding: 6px; display: grid; gap: 2px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 30px #172b4222; }
 .account-popup a, .account-popup button { display: flex; align-items: center; width: 100%; min-height: 44px; padding: 8px 12px; border: 0; border-radius: 7px; background: none; color: var(--ink); font-size: 13px; text-align: left; }
 .account-popup a:hover, .account-popup button:hover, .account-popup a[aria-current] { background: #edf1f7; color: var(--blue); }
+.account-popup { min-width: 240px; }
+.account-info { display: grid; gap: 2px; padding: 8px 12px 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.account-info strong { font-size: 14px; color: var(--ink); }
+.account-role { color: var(--blue); font-weight: 600; }

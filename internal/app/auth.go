@@ -86,16 +86,13 @@ func (a *App) callback(w http.ResponseWriter, r *http.Request) {
 	// Google accepts both issuer spellings; use one namespace after verification.
 	loginID := store.Hash("https://accounts.google.com|" + identity.Subject)
 	user := store.User{ID: loginID, Name: claims.Name}
-	base, baseName, linked, err := a.resolveLogin(ctx, loginID)
+	base, _, linked, err := a.resolveLogin(ctx, loginID)
 	if err != nil {
 		a.fail(w, r, err)
 		return
 	}
 	if linked {
 		user.ID = base
-		if baseName != "" {
-			user.Name = baseName
-		}
 	}
 	email := ""
 	if claims.EmailVerified {
