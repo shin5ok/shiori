@@ -4,7 +4,7 @@ export GOCACHE := $(CURDIR)/.cache/go-build
 export GOPATH := $(CURDIR)/.cache/go
 export PROJECT_ID REGION SERVICE BASE_URL GOOGLE_CLIENT_ID GEMINI_MODEL GEMINI_LOCATION
 
-.PHONY: help dev fmt vet test test-integration build clean emulator emulator-stop apis bootstrap migrate-ratings secrets indexes deploy url preview
+.PHONY: help dev fmt vet test test-integration build clean emulator emulator-stop apis bootstrap migrate-ratings migrate-titles secrets indexes deploy url preview
 help: ## コマンド一覧
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 dev: ## .envを読み込んでローカル起動（Emulatorが必要）
@@ -33,6 +33,8 @@ secrets: ## .envのOAuthシークレットをSecret Managerに登録
 	@bash scripts/secrets.sh
 migrate-ratings: ## 既存記事の星合計を初期化（ADCを使用）
 	@bash scripts/migrate-ratings.sh
+migrate-titles: ## 既存記事のタイトルを元ページのタイトルに書き換え（ARGS=--dry-runで確認のみ）
+	@bash scripts/migrate-titles.sh $(ARGS)
 indexes: ## Firestoreの複合インデックスを作成
 	@bash scripts/indexes.sh
 deploy: apis ## テスト・静的解析後、Cloud BuildのbuildpacksでビルドしてCloud Runへデプロイ

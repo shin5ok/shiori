@@ -36,21 +36,27 @@ func (s titleSummarizer) Summarize(context.Context, string, string, summary.Styl
 	return s.result, nil
 }
 
-func TestWorkerUsesGeneratedTitleForInitialAndRestyledSummary(t *testing.T) {
+func TestWorkerPrefersThePageTitle(t *testing.T) {
 	for _, tc := range []struct {
-		style           summary.Style
-		generated, want string
+		name        string
+		style       summary.Style
+		instruction string
+		pageTitle   string
+		generated   string
+		want        string
 	}{
-		{summary.Concrete, "新しい日本語タイトル", "新しい日本語タイトル"},
-		{summary.Concrete, "", "以前のタイトル"},
-		{summary.Standard, "新しい日本語タイトル", "新しい日本語タイトル"},
-		{summary.Standard, "", "元の記事タイトル"},
+		{"page title beats generated", summary.Standard, "", "元の記事タイトル", "新しい日本語タイトル", "元の記事タイトル"},
+		{"page title beats generated when restyled", summary.Concrete, "", "元の記事タイトル", "新しい日本語タイトル", "元の記事タイトル"},
+		{"page title without generated", summary.Standard, "", "元の記事タイトル", "", "元の記事タイトル"},
+		{"generated when the page has no title", summary.Standard, "", "", "新しい日本語タイトル", "新しい日本語タイトル"},
+		{"previous title kept when restyled without any title", summary.Concrete, "", "", "", "以前のタイトル"},
+		{"custom instruction may retitle", summary.Standard, "英語で書いて", "元の記事タイトル", "New English title", "New English title"},
 	} {
-		t.Run(string(tc.style)+tc.generated, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			q := &titleJobQueue{article: store.Article{URL: "https://example.com/article", Title: "以前のタイトル", Active: true, Count: 1}}
 			w := NewWorker(q, titleSummarizer{summary.Result{Title: tc.generated, TLDR: []string{"結論", "重要性", "影響"}, Points: []string{"記事の結論"}}}, "test")
-			w.fetcher = &http.Client{Transport: articleTransportWithTitle{}}
-			w.process(context.Background(), "article", "lease", tc.style, "")
+			w.fetcher = &http.Client{Transport: articleTransportWithTitle{title: tc.pageTitle}}
+			w.process(context.Background(), "article", "lease", tc.style, tc.instruction)
 			if len(q.tldr) != 3 {
 				t.Fatal("TLDR was not forwarded")
 			}
@@ -61,11 +67,15 @@ func TestWorkerUsesGeneratedTitleForInitialAndRestyledSummary(t *testing.T) {
 	}
 }
 
-type articleTransportWithTitle struct{}
+type articleTransportWithTitle struct{ title string }
 
-func (articleTransportWithTitle) RoundTrip(*http.Request) (*http.Response, error) {
+func (a articleTransportWithTitle) RoundTrip(*http.Request) (*http.Response, error) {
 	w := httptest.NewRecorder()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteString(`<html><title>元の記事タイトル</title><article><p>` + strings.Repeat("記事の本文です。", 200) + `</p></article></html>`)
+	head := ""
+	if a.title != "" {
+		head = "<title>" + a.title + "</title>"
+	}
+	w.WriteString(`<html>` + head + `<article><p>` + strings.Repeat("記事の本文です。", 200) + `</p></article></html>`)
 	return w.Result(), nil
 }

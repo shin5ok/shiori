@@ -218,11 +218,14 @@ func (w *Worker) processAttempt(parent context.Context, id, lease string, style 
 	if ctx.Err() != nil && failure == "" {
 		failure = "要約処理が中断されました。"
 	}
-	if generatedTitle != "" {
+	// The page's own title wins; the generated one is for pages without a usable
+	// title and for custom instructions, which may deliberately retitle.
+	if generatedTitle != "" && (title == "" || instruction != "") {
 		title = generatedTitle
-	} else if (style != summary.Standard || instruction != "") && article.Title != "" {
+	} else if title == "" && (style != summary.Standard || instruction != "") && article.Title != "" {
 		title = article.Title
 	}
+	title = content.ShortenTitle(title)
 	finishCtx, finishCancel := context.WithTimeout(context.WithoutCancel(parent), 3*time.Second)
 	defer finishCancel()
 	finish := w.db.FinishJob

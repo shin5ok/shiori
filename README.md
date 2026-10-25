@@ -314,6 +314,7 @@ GeminiはVertex AI経由で呼び出し、APIキーは使用しません。ADC�
 make help               # コマンド一覧
 make apis               # 必要なGoogle Cloud APIを有効化
 make migrate-ratings    # 既存記事の星合計を初期化（デプロイ先・ADC）
+make migrate-titles     # 既存記事のタイトルを元ページのタイトルに書き換え（ARGS=--dry-run で確認のみ）
 make fmt                # 整形
 make test               # race検出つき単体テスト
 make vet                # 静的解析
@@ -426,6 +427,8 @@ FirestoreへはサーバーSDKとIAMでアクセスします。ブラウザー�
    ```
 
 `make migrate-ratings` は `.env` の `PROJECT_ID` とADCを使い、Firestore Emulatorの設定を外してデプロイ先のDBを更新します。`rating_total` がない記事だけを0で初期化し、既存の星の合計は変更しません。再実行できます。初期化前の古い記事は、Firestoreの並べ替え対象に含まれないため人気一覧に表示されません。移行コマンドは `make deploy` から自動では実行しません。
+
+記事のタイトルは、取得できた元ページの `<title>` を優先して使い、取れない場合だけAIが付けたタイトルを使います（カスタム指示を付けた再要約ではAIのタイトルが使われます）。60文字を超える長いタイトルは、`|` `-` `｜` などの区切りで分けた中で最も長い部分（サイト名などを除いた本題）を採用し、それでも長い場合は読点や句点などの区切りで切って「…」を付けます。すでに保存済みの記事は `make migrate-titles` で一括して元ページのタイトルに書き換えられます。先に `make migrate-titles ARGS=--dry-run` で変更内容を確認できます。ページを取得できない記事とYouTube動画は変更せず、再実行できます。
 
 `make deploy` はCloud Tasksキューと専用ワーカーを作成・更新し、ワーカーの呼び出し権限を設定してから画面・トークンAPIを更新します。新規のCloud Tasks構成は `make bootstrap` と `make deploy` に含まれています。
 
