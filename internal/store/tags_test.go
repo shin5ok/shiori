@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 
 	"my-bookmark/internal/summary"
@@ -85,5 +86,65 @@ func TestReadyArticleWithoutTagsQueuesClassification(t *testing.T) {
 	got, err := s.Save(ctx, User{ID: "new"}, a.URL, "", nil)
 	if err != nil || got.Status != "queued" {
 		t.Fatalf("legacy classification: %+v %v", got, err)
+	}
+}
+
+func TestHandAddedTagsJoinAutomaticVocabulary(t *testing.T) {
+	s, ctx := ratingTestStore(t)
+	s.tagCandidates = []string{"AI", "技術"}
+	learned := "英語" + RandomToken()[:6]
+	raw := "https://example.com/" + RandomToken()
+	a, err := s.Save(ctx, User{ID: "u"}, raw, "", []string{learned, "AI"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	vocabulary, err := s.TagVocabulary(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(vocabulary[:2], s.tagCandidates) || !slices.Contains(vocabulary, learned) || slices.Index(vocabulary, "AI") != 0 || len(vocabulary) > 2+maxLearnedTags {
+		t.Fatalf("vocabulary: %v", vocabulary)
+	}
+	// A generated tag from the learned vocabulary is applied and reused.
+	if _, err := s.Save(ctx, User{ID: "v"}, raw, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	_, lease, err := s.NextQueued(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tags := []string{"技術", learned}
+	if err := s.FinishJobWithTags(ctx, a.ID, lease, "記事", []string{"要点"}, "test", nil, "", nil, tags); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := s.Own(ctx, "v", a.ID); err != nil || !reflect.DeepEqual(b.Tags, tags) {
+		t.Fatalf("learned tags: %+v %v", b, err)
+	}
+	got, err := s.Save(ctx, User{ID: "w"}, raw, "", nil)
+	if err != nil || got.Status != "ready" {
+		t.Fatalf("learned suggestion was not reused: %+v %v", got, err)
+	}
+	if b, err := s.Own(ctx, "w", a.ID); err != nil || !reflect.DeepEqual(b.Tags, tags) {
+		t.Fatalf("reused tags: %+v %v", b, err)
+	}
+}
+
+func TestUnknownGeneratedTagsAreRejected(t *testing.T) {
+	s, ctx := ratingTestStore(t)
+	s.tagCandidates = []string{"AI", "技術"}
+	raw := "https://example.com/" + RandomToken()
+	a, err := s.Save(ctx, User{ID: "u"}, raw, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, lease, err := s.NextQueued(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishJobWithTags(ctx, a.ID, lease, "記事", []string{"要点"}, "test", nil, "", nil, []string{"AI", "未登録" + RandomToken()[:6]}); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := s.Own(ctx, "u", a.ID); err != nil || len(b.Tags) != 0 {
+		t.Fatalf("unknown tag applied: %+v %v", b, err)
 	}
 }

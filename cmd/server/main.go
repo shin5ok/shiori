@@ -91,6 +91,7 @@ func run() error {
 	gemini := &content.Gemini{TagCandidates: cfg.TagCandidates, Project: cfg.Project, Location: cfg.GeminiLocation, Model: cfg.GeminiModel, ImageModel: cfg.GeminiImageModel, ImageLocation: cfg.GeminiImageLocation, TokenSource: tokenSource}
 	var summarizer app.Summarizer = gemini
 	database := store.New(db, cfg.TagCandidates)
+	gemini.TagVocabulary = database.TagVocabulary
 	worker := app.NewWorker(database, summarizer, cfg.GeminiModel)
 	visualWorker := app.NewInfographicWorker(database, gemini)
 	var handler http.Handler

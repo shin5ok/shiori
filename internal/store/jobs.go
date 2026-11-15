@@ -373,7 +373,13 @@ func (s *Store) FinishJobWithTags(ctx context.Context, id, lease, title string, 
 			}
 		}
 		var tagUpdates []*firestore.DocumentRef
-		if failure == "" && summary.ValidAutoTags(tags, s.tagCandidates) {
+		known := false
+		if failure == "" {
+			if known, err = s.knownAutoTags(tx, tags); err != nil {
+				return err
+			}
+		}
+		if known {
 			docs, err := tx.Documents(s.client.Collection("bookmarks").Where("article_id", "==", id)).GetAll()
 			if err != nil {
 				return err

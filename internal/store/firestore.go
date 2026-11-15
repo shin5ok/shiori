@@ -9,7 +9,6 @@ import (
 	"cloud.google.com/go/firestore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"my-bookmark/internal/summary"
 )
 
 type Store struct {
@@ -102,16 +101,20 @@ func (s *Store) Save(ctx context.Context, u User, raw, comment string, tags []st
 		} else {
 			a.Count++
 		}
+		suggested, err := s.knownAutoTags(tx, a.SuggestedTags)
+		if err != nil {
+			return err
+		}
 		b.Comment = comment
 		b.Tags = tags
-		if len(b.Tags) == 0 && summary.ValidAutoTags(a.SuggestedTags, s.tagCandidates) {
+		if len(b.Tags) == 0 && suggested {
 			b.Tags = append([]string(nil), a.SuggestedTags...)
 		}
 		b.UpdatedAt = now
 		b.Name = u.Name
 		a.Active = true
 		ops := []func() error{}
-		if ae != nil || (len(s.tagCandidates) >= 2 && len(tags) == 0 && !summary.ValidAutoTags(a.SuggestedTags, s.tagCandidates) && a.Status == "ready") {
+		if ae != nil || (len(s.tagCandidates) >= 2 && len(tags) == 0 && !suggested && a.Status == "ready") {
 			q, qr, err := readQuota(ctx, tx, s.client, u.ID, now)
 			if err != nil {
 				return err
@@ -132,6 +135,13 @@ func (s *Store) Save(ctx context.Context, u User, raw, comment string, tags []st
 			if j.Status == "queued" {
 				a.Stage = "queued"
 				a.Progress = "要約を開始します"
+			}
+		}
+		// Hand-added tags become candidates for future automatic tagging.
+		for _, tag := range tags {
+			if !s.configuredTag(tag) {
+				learned := LearnedTag{Name: tag, LastUsedAt: now}
+				ops = append(ops, func() error { return tx.Set(s.learnedTag(learned.Name), learned) })
 			}
 		}
 		if err := tx.Set(ar, a); err != nil {
