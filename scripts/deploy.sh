@@ -13,9 +13,27 @@ GEMINI_IMAGE_LOCATION=${GEMINI_IMAGE_LOCATION:-global}
 image_env="GEMINI_IMAGE_MODEL=$GEMINI_IMAGE_MODEL,GEMINI_IMAGE_LOCATION=$GEMINI_IMAGE_LOCATION"
 project_number=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
 service_url="https://${SERVICE}-${project_number}.${REGION}.run.app"
-base_url=${DEPLOY_BASE_URL:-$service_url}
+# LB_DOMAIN selects the HTTPS load balancer created by make lb: IAP is then enabled on its
+# backend service instead of on Cloud Run, which accepts only load balancer traffic.
+LB_DOMAIN=${LB_DOMAIN:-}
+if [[ -n "$LB_DOMAIN" ]]; then
+  [[ "$LB_DOMAIN" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || { echo 'LB_DOMAIN must be a host name.' >&2; exit 1; }
+  backend_id=$(gcloud compute backend-services describe "${SERVICE}-backend" --global --project="$PROJECT_ID" --format='value(id)')
+  [[ "$backend_id" =~ ^[0-9]+$ ]] || { echo "Backend service ${SERVICE}-backend not found. Run make lb first." >&2; exit 1; }
+  iap_audience="/projects/$project_number/global/backendServices/$backend_id"
+  iap_resource_path="projects/$project_number/iap_web/compute/services/$backend_id"
+  run_iap_flags="--no-iap --ingress=internal-and-cloud-load-balancing"
+  base_url=${DEPLOY_BASE_URL:-https://$LB_DOMAIN}
+else
+  iap_audience="/projects/$project_number/locations/$REGION/services/$SERVICE"
+  iap_resource_path="projects/$project_number/iap_web/cloud_run-$REGION/services/$SERVICE"
+  run_iap_flags="--iap --ingress=all"
+  base_url=${DEPLOY_BASE_URL:-$service_url}
+fi
 api_service="${SERVICE}-api"
 api_url="https://${api_service}-${project_number}.${REGION}.run.app"
+# The load balancer routes /api/* to the API service without IAP, so the domain serves the token API too.
+[[ -n "$LB_DOMAIN" ]] && api_url="https://$LB_DOMAIN"
 if [[ "$base_url" != https://* || "$base_url" == *','* || "$base_url" == */ ]]; then echo 'DEPLOY_BASE_URL must be an HTTPS origin without a trailing slash.' >&2; exit 1; fi
 command -v jq >/dev/null && command -v curl >/dev/null || { echo 'jq and curl are required for make deploy.' >&2; exit 1; }
 [[ -f config.yaml ]] || { echo 'config.yaml is required.' >&2; exit 1; }
@@ -49,9 +67,9 @@ gcloud run services add-iam-policy-binding "$worker_service" --project="$PROJECT
   --member="serviceAccount:$TASKS_SA" --role=roles/run.invoker --quiet >/dev/null
 gcloud run deploy "$SERVICE" --image="$image" --project="$PROJECT_ID" --region="$REGION" \
   --service-account="$RUNTIME_SA" \
-  --no-allow-unauthenticated --iap --port=8080 --cpu=1 --memory=2Gi --concurrency=40 --timeout=300 --no-cpu-throttling \
+  --no-allow-unauthenticated $run_iap_flags --port=8080 --cpu=1 --memory=2Gi --concurrency=40 --timeout=300 --no-cpu-throttling \
   --min=1 --max=3 \
-  --set-env-vars="APP_ENV=production,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,BASE_URL=$base_url,API_BASE_URL=$api_url,IAP_AUDIENCE=/projects/$project_number/locations/$REGION/services/$SERVICE,GEMINI_MODEL=$GEMINI_MODEL,GEMINI_LOCATION=$GEMINI_LOCATION,$image_env,$tasks_env$mail_env" \
+  --set-env-vars="APP_ENV=production,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,BASE_URL=$base_url,API_BASE_URL=$api_url,IAP_AUDIENCE=$iap_audience,GEMINI_MODEL=$GEMINI_MODEL,GEMINI_LOCATION=$GEMINI_LOCATION,$image_env,$tasks_env$mail_env" \
   --clear-secrets --quiet
 gcloud run services add-iam-policy-binding "$SERVICE" --project="$PROJECT_ID" --region="$REGION" \
   --member="serviceAccount:service-${project_number}@gcp-sa-iap.iam.gserviceaccount.com" \
@@ -60,10 +78,23 @@ current_policy=$(mktemp)
 desired_policy=$(mktemp)
 trap 'rm -f "$current_policy" "$desired_policy"' EXIT
 # Policy version 3 is required to read and write the conditional binding that holds linked accounts.
-iap_resource="https://iap.googleapis.com/v1/projects/$project_number/iap_web/cloud_run-$REGION/services/$SERVICE"
+iap_resource="https://iap.googleapis.com/v1/$iap_resource_path"
 iap_token=$(gcloud auth print-access-token)
 curl -fsS -X POST "$iap_resource:getIamPolicy" -H "Authorization: Bearer $iap_token" -H 'Content-Type: application/json' \
   -d '{"options":{"requestedPolicyVersion":3}}' > "$current_policy"
+if [[ -n "$LB_DOMAIN" ]]; then
+  # Carry accounts linked under direct Cloud Run IAP over to the backend service's policy.
+  old_policy=$(mktemp)
+  if curl -fsS -X POST "https://iap.googleapis.com/v1/projects/$project_number/iap_web/cloud_run-$REGION/services/$SERVICE:getIamPolicy" -H "Authorization: Bearer $iap_token" -H 'Content-Type: application/json' \
+    -d '{"options":{"requestedPolicyVersion":3}}' > "$old_policy" 2>/dev/null; then
+    jq --slurpfile old "$old_policy" '
+      (.bindings // []) as $current
+      | ([($old[0].bindings // [])[] | select(.condition.title == "shiori-linked-accounts")]) as $linked
+      | .bindings = ($current + [$linked[] | select(. as $b | $current | any(.condition.title == "shiori-linked-accounts" and .role == $b.role) | not)])
+      | .version = 3' "$current_policy" > "$current_policy.tmp" && mv "$current_policy.tmp" "$current_policy"
+  fi
+  rm -f "$old_policy"
+fi
 go run ./cmd/iap-policy config.yaml "$current_policy" "$desired_policy"
 if [[ -n "$MAIL_SENDER" ]]; then
   # The runtime service account manages the linked-account binding at run time.

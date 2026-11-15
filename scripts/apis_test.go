@@ -13,8 +13,8 @@ func TestMakeAPIsEnablesOnlyMissingServices(t *testing.T) {
 		name, enabled, want string
 		failList            bool
 	}{
-		{"missing tasks", "run.googleapis.com\nfirestore.googleapis.com\ncloudbuild.googleapis.com\nartifactregistry.googleapis.com\nsecretmanager.googleapis.com\niam.googleapis.com\naiplatform.googleapis.com\niap.googleapis.com\niamcredentials.googleapis.com\ngmail.googleapis.com", "services enable cloudtasks.googleapis.com --project=test-project", false},
-		{"already enabled", "run.googleapis.com\nfirestore.googleapis.com\ncloudbuild.googleapis.com\nartifactregistry.googleapis.com\nsecretmanager.googleapis.com\niam.googleapis.com\naiplatform.googleapis.com\niap.googleapis.com\niamcredentials.googleapis.com\ngmail.googleapis.com\ncloudtasks.googleapis.com", "", false},
+		{"missing tasks", "run.googleapis.com\nfirestore.googleapis.com\ncloudbuild.googleapis.com\nartifactregistry.googleapis.com\nsecretmanager.googleapis.com\niam.googleapis.com\naiplatform.googleapis.com\niap.googleapis.com\niamcredentials.googleapis.com\ngmail.googleapis.com\ncompute.googleapis.com", "services enable cloudtasks.googleapis.com --project=test-project", false},
+		{"already enabled", "run.googleapis.com\nfirestore.googleapis.com\ncloudbuild.googleapis.com\nartifactregistry.googleapis.com\nsecretmanager.googleapis.com\niam.googleapis.com\naiplatform.googleapis.com\niap.googleapis.com\niamcredentials.googleapis.com\ngmail.googleapis.com\ncompute.googleapis.com\ncloudtasks.googleapis.com", "", false},
 		{"listing denied", "", "", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -124,3 +124,18 @@ func TestLoadConfigDevelopmentAllowsMailSenderAlone(t *testing.T) {
 		t.Fatalf("development config rejected: %v", err)
 	}
 }
+
+func TestIAPAudienceAcceptsLoadBalancerBackendService(t *testing.T) {
+	t.Setenv("FIRESTORE_EMULATOR_HOST", "127.0.0.1:8085")
+	for audience, ok := range map[string]bool{
+		"/projects/123/locations/asia-northeast1/services/shiori": true,
+		"/projects/123/global/backendServices/987654321":          true,
+		"/projects/123/global/backendServices/shiori-backend":     false,
+		"/projects/123": false,
+	} {
+		err := Config{Env: "development", Project: "test", BaseURL: "http://localhost:8080", IAPAudience: audience}.Validate()
+		if (err == nil) != ok {
+			t.Errorf("audience %q: err=%v want ok=%v", audience, err, ok)
+		}
+	}
+}

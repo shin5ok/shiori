@@ -44,7 +44,7 @@ if [[ "$1 $2 $3" == 'artifacts repositories describe' && "${MISSING_REPO:-}" == 
 		t.Fatal(err)
 	}
 	cmd := exec.Command("bash", filepath.Join(root, "scripts", "deploy.sh"))
-	cmd.Env = append(os.Environ(), "PATH="+filepath.Join(root, "bin")+":"+os.Getenv("PATH"), "GCLOUD_LOG="+log,
+	cmd.Env = append(cleanEnv(), "PATH="+filepath.Join(root, "bin")+":"+os.Getenv("PATH"), "GCLOUD_LOG="+log,
 		"PROJECT_ID=test-project", "SERVICE=shiori", "GOOGLE_CLIENT_ID=test-client")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("deploy failed: %v\n%s", err, output)
@@ -127,7 +127,7 @@ if [[ "$1 $2 $3" == 'artifacts repositories describe' ]]; then exit 1; fi
 		t.Fatal(err)
 	}
 	cmd := exec.Command("bash", filepath.Join(root, "scripts", "deploy.sh"))
-	cmd.Env = append(os.Environ(), "PATH="+filepath.Join(root, "bin")+":"+os.Getenv("PATH"), "GCLOUD_LOG="+log,
+	cmd.Env = append(cleanEnv(), "PATH="+filepath.Join(root, "bin")+":"+os.Getenv("PATH"), "GCLOUD_LOG="+log,
 		"PROJECT_ID=test-project", "SERVICE=shiori", "GOOGLE_CLIENT_ID=test-client")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("deploy failed: %v\n%s", err, output)

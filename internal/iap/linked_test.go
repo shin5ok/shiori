@@ -121,3 +121,19 @@ func TestGrantsReadsVersion3AndRetriesEtagConflicts(t *testing.T) {
 		t.Fatal("bad audience accepted")
 	}
 }
+
+func TestResourceFromAudience(t *testing.T) {
+	for audience, want := range map[string]string{
+		"/projects/123/locations/asia-northeast1/services/shiori": "projects/123/iap_web/cloud_run-asia-northeast1/services/shiori",
+		"/projects/123/global/backendServices/987654321":          "projects/123/iap_web/compute/services/987654321",
+	} {
+		if got, err := Resource(audience); err != nil || got != want {
+			t.Errorf("Resource(%q)=%q, %v; want %q", audience, got, err, want)
+		}
+	}
+	for _, bad := range []string{"", "/projects/x", "/projects/123/global/backendServices/name", "/projects/123/global/backendServices/9/extra"} {
+		if _, err := Resource(bad); err == nil {
+			t.Errorf("Resource(%q) accepted", bad)
+		}
+	}
+}

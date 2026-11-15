@@ -53,8 +53,6 @@ func LoadConfig() (Config, error) {
 	return c, c.Validate()
 }
 
-var iapAudiencePattern = regexp.MustCompile(`^/projects/[0-9]+/locations/[a-z0-9-]+/services/[a-z0-9-]+$`)
-
 func env(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -123,8 +121,10 @@ func (c Config) Validate() error {
 	if c.Env == "production" && (c.MailSender == "") != (c.MailServiceAccount == "") {
 		return errors.New("set both MAIL_SENDER and MAIL_SERVICE_ACCOUNT")
 	}
-	if c.IAPAudience != "" && !iapAudiencePattern.MatchString(c.IAPAudience) {
-		return errors.New("IAP_AUDIENCE must identify this Cloud Run service")
+	if c.IAPAudience != "" {
+		if _, err := iap.Resource(c.IAPAudience); err != nil {
+			return errors.New("IAP_AUDIENCE must identify this Cloud Run service or its load balancer backend service")
+		}
 	}
 	return nil
 }

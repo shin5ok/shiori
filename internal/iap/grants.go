@@ -13,9 +13,26 @@ import (
 	"sync"
 )
 
-var audiencePattern = regexp.MustCompile(`^/projects/([0-9]+)/locations/([a-z0-9-]+)/services/([a-z0-9-]+)$`)
+var (
+	// Direct Cloud Run IAP signs tokens for the service itself.
+	cloudRunAudience = regexp.MustCompile(`^/projects/([0-9]+)/locations/([a-z0-9-]+)/services/([a-z0-9-]+)$`)
+	// IAP on a load balancer signs tokens for the backend service's numeric ID.
+	backendAudience = regexp.MustCompile(`^/projects/([0-9]+)/global/backendServices/([0-9]+)$`)
+)
 
-// Grants edits the application-managed IAP binding of one Cloud Run service.
+// Resource maps an IAP token audience to the IAP resource whose policy holds
+// its access list.
+func Resource(audience string) (string, error) {
+	if m := cloudRunAudience.FindStringSubmatch(audience); m != nil {
+		return fmt.Sprintf("projects/%s/iap_web/cloud_run-%s/services/%s", m[1], m[2], m[3]), nil
+	}
+	if m := backendAudience.FindStringSubmatch(audience); m != nil {
+		return fmt.Sprintf("projects/%s/iap_web/compute/services/%s", m[1], m[2]), nil
+	}
+	return "", errors.New("IAP audience must identify a Cloud Run service or a load balancer backend service")
+}
+
+// Grants edits the application-managed IAP binding of the service.
 type Grants struct {
 	// Client must carry cloud-platform credentials.
 	Client   *http.Client
@@ -26,11 +43,11 @@ type Grants struct {
 
 // NewGrants derives the IAP resource from the Cloud Run IAP audience.
 func NewGrants(client *http.Client, audience string) (*Grants, error) {
-	m := audiencePattern.FindStringSubmatch(audience)
-	if m == nil {
-		return nil, errors.New("IAP audience must identify a Cloud Run service")
+	resource, err := Resource(audience)
+	if err != nil {
+		return nil, err
 	}
-	return &Grants{Client: client, Endpoint: "https://iap.googleapis.com", resource: fmt.Sprintf("projects/%s/iap_web/cloud_run-%s/services/%s", m[1], m[2], m[3])}, nil
+	return &Grants{Client: client, Endpoint: "https://iap.googleapis.com", resource: resource}, nil
 }
 
 func (g *Grants) Grant(ctx context.Context, email string) error  { return g.update(ctx, email, true) }

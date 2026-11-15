@@ -397,6 +397,20 @@ make apis
 
 IAPのGoogle管理OAuthクライアントは通常、同一組織内のユーザー向けです。プロジェクトが`data-cloud.jp`と別組織にある場合、[Cloud Run IAPの外部ユーザー設定](https://docs.cloud.google.com/run/docs/securing/identity-aware-proxy-cloud-run)に従いカスタムOAuthクライアントを構成してください。IAMの`domain:`許可はWorkspaceの顧客IDで評価されるため、セカンダリドメインにも及び得ます。アプリはJWTのメールアドレスが`@data-cloud.jp`に一致するかを別途検査します。
 
+### 独自ドメインとロードバランサ経由のIAP（外部ユーザーを許可）
+
+Cloud Run直接のIAPは、Google管理のOAuthクライアントを使うため同じ組織のユーザー向けです。組織外のGoogleアカウント（名寄せで追加する `@example.com` など）を使うには、Google Cloudのロードバランサ（GCLB）経由でIAPを有効にし、自前のOAuthクライアントを使います。
+
+1. **OAuthクライアントを作る（コンソール）**：「APIとサービス」→「OAuth同意画面」でユーザーの種類を「外部」にして「本番環境」に公開します。「認証情報」でウェブアプリケーションのクライアントを作り、承認済みリダイレクトURIに `https://iap.googleapis.com/v1/oauth/clientIds/<CLIENT_ID>:handleRedirect` を追加します。開発用の `GOOGLE_CLIENT_ID` とは別のクライアントを使ってください。
+2. `.env` に `LB_DOMAIN=shiori.smc.uname.link`、`IAP_OAUTH_CLIENT_ID`、`IAP_OAUTH_CLIENT_SECRET` を設定します（この段階では `LB_DOMAIN` を設定すると `make deploy` がロードバランサ用の設定に切り替わるため、手順3の確認後に設定します）。`make lb` は環境変数を `.env` から読むので、一時的に `LB_DOMAIN=shiori.smc.uname.link make lb` と指定しても構いません。
+3. `make lb` を実行します。固定IP・サーバーレスNEG・バックエンドサービス（IAP有効）・URLマップ・Google管理の証明書・HTTPSフォワーディングルール、HTTPからHTTPSへのリダイレクトを作成します。何度実行しても、既存のリソースは作り直しません。
+4. ドメインのDNSに表示されたIPのAレコードを設定します。ゾーンがこのプロジェクトのCloud DNSにある場合は自動で登録します。証明書が `ACTIVE` になる（DNSが向いてから数十分かかることがあります）のを待ち、`https://shiori.smc.uname.link` でGoogleのログインが表示されることを確認します。
+5. `.env` に `LB_DOMAIN` を設定して `make deploy` します。Cloud Runは `--no-iap --ingress=internal-and-cloud-load-balancing` になり、`run.app` のURLでは使えなくなります。IAPのトークン検証の対象（`IAP_AUDIENCE`）とアクセス権の同期先はバックエンドサービスに切り替わり、Cloud Run直接のIAPで名寄せしていたアカウントの許可は新しいポリシーへ引き継ぎます。`BASE_URL` は `https://$LB_DOMAIN` になり、確認メールのリンクもこのドメインになります。
+
+`/api/*` はIAPの対象外です。`make lb` が、URLマップで `/api/*` だけを別のバックエンドサービス（IAPなし、`shiori-api` のNEG）へ振り分けます。curlやショートカットから `https://$LB_DOMAIN/api/bookmarks` を、IAPのログインなしでトークンだけで呼べます（IAPを通さないと401 `Invalid IAP credentials` になります）。`make deploy` で、設定画面に表示されるAPIのURLもこのドメインになります。URLマップの反映には数分かかります。
+
+外部ドメインのアカウントを許可するかどうかは、これまでどおり `config.yaml` の `accounts`/`domains` と名寄せの招待で決まります。同意画面を「外部」にしても、IAMとアプリの許可リストにないアカウントは入れません。`make lb` にはCompute Engine APIが必要です（`make apis` で有効化します）。
+
 インデックスの作成は非同期です。`gcloud firestore indexes composite list --project=PROJECT_ID`で全て`READY`になってから利用してください。独自ドメインを設定済みなら`.env`に`DEPLOY_BASE_URL=https://your-domain.example`を設定します。
 
 FirestoreへはサーバーSDKとIAMでアクセスします。ブラウザー用Firebase SDKは使用しません。`firestore.rules`はブラウザーからのアクセスを全面拒否する参考設定です。既存のFirebaseプロジェクトへ導入する場合は既存ルールを確認し、意図せず公開しないでください。
