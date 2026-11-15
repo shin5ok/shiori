@@ -32,3 +32,35 @@ func TestShortenTitle(t *testing.T) {
 		t.Fatalf("phrase cut: %q", got)
 	}
 }
+
+func TestJapaneseDetectionAndMarking(t *testing.T) {
+	for in, want := range map[string]bool{"Goの入門": true, "経済危機": true, "How to Go": false, "Go 言語 tour": false, "": false} {
+		if got := IsJapanese(in); got != want {
+			t.Errorf("IsJapanese(%q)=%v want %v", in, got, want)
+		}
+	}
+	if got := MarkGenerated(" 並行処理の入門 "); got != `"並行処理の入門"` || !IsMarkedGenerated(got) {
+		t.Fatalf("mark: %q", got)
+	}
+	if IsMarkedGenerated(`"`) || IsMarkedGenerated("通常") {
+		t.Fatal("false positive")
+	}
+}
+
+func TestIsMeaninglessTitle(t *testing.T) {
+	for _, tc := range []struct {
+		title, url string
+		want       bool
+	}{
+		{`辰巳圭吾（たつみけいご） on X: "https://t.co/VZrhfBBTGt" / X`, "https://x.com/a/status/1", true},
+		{"https://t.co/abc", "https://t.co/abc", true},
+		{"example.com", "https://www.example.com/post", true},
+		{"", "https://example.com/", true},
+		{"Goの並行処理入門", "https://example.com/go", false},
+		{"How to use http in Go", "https://example.com/go", false},
+	} {
+		if got := IsMeaninglessTitle(tc.title, tc.url); got != tc.want {
+			t.Errorf("IsMeaninglessTitle(%q)=%v want %v", tc.title, got, tc.want)
+		}
+	}
+}

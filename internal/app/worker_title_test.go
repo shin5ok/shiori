@@ -50,6 +50,9 @@ func TestWorkerPrefersThePageTitle(t *testing.T) {
 		{"page title without generated", summary.Standard, "", "元の記事タイトル", "", "元の記事タイトル"},
 		{"generated when the page has no title", summary.Standard, "", "", "新しい日本語タイトル", "新しい日本語タイトル"},
 		{"previous title kept when restyled without any title", summary.Concrete, "", "", "", "以前のタイトル"},
+		{"non-Japanese page title is replaced by a marked Japanese one", summary.Standard, "", "How to build a Go service", "Goでサービスを作る方法", `"Goでサービスを作る方法"`},
+		{"non-Japanese page title stays without a generated one", summary.Standard, "", "How to build a Go service", "", "How to build a Go service"},
+		{"bare URL title is replaced by a marked generated one", summary.Standard, "", `辰巳圭吾 on X: "https://t.co/VZrhfBBTGt" / X`, "新製品の発表を告知する投稿", `"新製品の発表を告知する投稿"`},
 		{"custom instruction may retitle", summary.Standard, "英語で書いて", "元の記事タイトル", "New English title", "New English title"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

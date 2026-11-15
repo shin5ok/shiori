@@ -218,14 +218,21 @@ func (w *Worker) processAttempt(parent context.Context, id, lease string, style 
 	if ctx.Err() != nil && failure == "" {
 		failure = "要約処理が中断されました。"
 	}
-	// The page's own title wins; the generated one is for pages without a usable
-	// title and for custom instructions, which may deliberately retitle.
-	if generatedTitle != "" && (title == "" || instruction != "") {
-		title = generatedTitle
-	} else if title == "" && (style != summary.Standard || instruction != "") && article.Title != "" {
-		title = article.Title
+	// The page's own title wins. The generated one is used when the page has no
+	// title or for custom instructions, which may deliberately retitle. A page
+	// title that is not Japanese is replaced by a Japanese generated title in
+	// double quotes, so it is clear the AI wrote it; so is one for a meaningless
+	// page title such as a bare URL.
+	switch {
+	case generatedTitle != "" && (title == "" || instruction != ""):
+		title = content.ShortenTitle(generatedTitle)
+	case generatedTitle != "" && (!content.IsJapanese(title) || content.IsMeaninglessTitle(title, article.URL)):
+		title = content.MarkGenerated(generatedTitle)
+	case title == "" && (style != summary.Standard || instruction != "") && article.Title != "":
+		title = content.ShortenTitle(article.Title)
+	default:
+		title = content.ShortenTitle(title)
 	}
-	title = content.ShortenTitle(title)
 	finishCtx, finishCancel := context.WithTimeout(context.WithoutCancel(parent), 3*time.Second)
 	defer finishCancel()
 	finish := w.db.FinishJob
