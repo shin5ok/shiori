@@ -116,11 +116,11 @@ func TestInfographicJobLifecycleAndSummaryInvalidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err = s.Get(ctx, a.ID)
-	if err != nil || got.Infographic != nil || got.InfographicStatus != "" || got.InfographicImageKey != "" {
-		t.Fatalf("old image retained: %+v %v", got, err)
+	if err != nil || got.InfographicStatus != "ready" || got.InfographicImageKey != imageKey {
+		t.Fatalf("image lost after resummarizing: %+v %v", got, err)
 	}
-	if _, err := s.GetInfographicImage(ctx, a.ID, imageKey); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("obsolete image data retained: %v", err)
+	if _, err := s.GetInfographicImage(ctx, a.ID, imageKey); err != nil {
+		t.Fatalf("image data lost after resummarizing: %v", err)
 	}
 	if err := s.EnqueueInfographic(ctx, v.ID, a.ID); err != nil {
 		t.Fatalf("new summary cannot be visualized: %v", err)
@@ -141,5 +141,8 @@ func TestInfographicJobLifecycleAndSummaryInvalidation(t *testing.T) {
 	}
 	if stale, _, err := s.ClaimInfographic(ctx, a.ID, visualJobs[0].QueuedAt); err != nil || stale != nil {
 		t.Fatalf("obsolete visual job survived summary update: %+v %v", stale, err)
+	}
+	if got, err = s.Get(ctx, a.ID); err != nil || got.InfographicStatus != "ready" || got.InfographicImageKey != imageKey {
+		t.Fatalf("cancelled regeneration hid the existing image: %+v %v", got, err)
 	}
 }

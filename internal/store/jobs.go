@@ -418,15 +418,6 @@ func (s *Store) FinishJobWithTags(ctx context.Context, id, lease, title string, 
 			a.TLDR = tldr
 			a.Model = model
 			a.SummaryVersion++
-			a.InfographicCost = cost.Estimate{}
-			a.Infographic = nil
-			a.InfographicImageKey = ""
-			if err := tx.Delete(s.infographicImage(id)); err != nil {
-				return err
-			}
-			a.InfographicStatus = ""
-			a.InfographicError = ""
-			a.InfographicLeaseUntil = time.Time{}
 		} else {
 			a.Status = "failed"
 			a.Stage = "failed"
@@ -440,6 +431,14 @@ func (s *Store) FinishJobWithTags(ctx context.Context, id, lease, title string, 
 			infographicJob.Status = "cancelled"
 			infographicJob.Lease, infographicJob.LeaseUntil = "", time.Time{}
 			if err := tx.Set(infographicRef, infographicJob); err != nil {
+				return err
+			}
+			// 作成中だった図解は取り消すが、すでにある図解は残す。
+			a.InfographicStatus, a.InfographicLeaseUntil = "", time.Time{}
+			if a.Infographic != nil || a.InfographicImageKey != "" {
+				a.InfographicStatus = "ready"
+			}
+			if err = tx.Set(ar, a); err != nil {
 				return err
 			}
 		}
